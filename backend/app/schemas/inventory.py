@@ -1,7 +1,3 @@
-"""
-Pydantic schemas for inventory CRUD — validates JSON from mobile app.
-"""
-
 from datetime import date, datetime
 from pydantic import BaseModel, Field
 
@@ -11,7 +7,7 @@ class InventoryItemCreate(BaseModel):
     quantity: float = Field(default=1, gt=0)
     unit: str = Field(default="buah", max_length=30)
     expiry_date: date | None = None
-    is_natural: bool = False  # True = no packaging, estimate from shelf_life
+    is_natural: bool = False
 
 
 class InventoryItemUpdate(BaseModel):
@@ -33,6 +29,6 @@ class InventoryItemResponse(BaseModel):
     is_natural: bool
     days_remaining: int | None = None
     spi_score: float | None = None
-    freshness_status: str | None = None  # fresh, warning, critical, expired
+    freshness_status: str | None = None
     added_at: datetime
     updated_at: datetime

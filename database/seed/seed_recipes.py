@@ -1,14 +1,4 @@
-"""
-NirSisa - Seed recipes from Indonesian_Food_Recipes_Cleaned.csv into Supabase PostgreSQL.
-
-Usage:
-    pip install supabase python-dotenv
-    python seed_recipes.py
-
-Environment variables (create .env file in database/ directory):
-    SUPABASE_URL=https://your-project.supabase.co
-    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-"""
+"""Seed recipes from cleaned CSV into Supabase."""
 
 import os
 import sys
@@ -19,11 +9,9 @@ try:
     from supabase import create_client, Client
     from dotenv import load_dotenv
 except ImportError:
-    print("Install dependencies first:")
-    print("  pip install supabase python-dotenv")
+    print("pip install supabase python-dotenv")
     sys.exit(1)
 
-# Load .env from database/ directory
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -43,7 +31,6 @@ def get_supabase() -> Client:
 
 
 def seed_categories(supabase: Client) -> dict[str, int]:
-    """Ensure recipe_categories exist and return name->id mapping."""
     categories = ["ayam", "ikan", "kambing", "sapi", "tahu", "telur", "tempe", "udang"]
 
     for cat in categories:
@@ -56,7 +43,6 @@ def seed_categories(supabase: Client) -> dict[str, int]:
 
 
 def read_csv() -> list[dict]:
-    """Read cleaned CSV and return list of recipe dicts."""
     recipes = []
     with open(CSV_PATH, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -77,11 +63,9 @@ def read_csv() -> list[dict]:
 
 
 def seed_recipes(supabase: Client, cat_map: dict[str, int]):
-    """Insert recipes in batches."""
     recipes = read_csv()
     print(f"Read {len(recipes)} recipes from CSV")
 
-    # Check if recipes already exist
     count_result = supabase.table("recipes").select("id", count="exact").limit(1).execute()
     existing_count = count_result.count or 0
     if existing_count > 0:
@@ -142,10 +126,7 @@ def main():
     print("2. Seeding recipes...")
     seed_recipes(supabase, cat_map)
 
-    print()
-    print("Done! Next steps:")
-    print("  - Run 003_seed_shelf_life.sql in Supabase SQL Editor")
-    print("  - Run the TF-IDF vectorizer to populate recipe_tfidf_cache")
+    print("\nDone!")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,3 @@
-"""
-Pydantic schemas for recipes — read-only from the API perspective.
-"""
-
 from pydantic import BaseModel
 
 
@@ -19,9 +15,6 @@ class RecipeResponse(BaseModel):
 
 
 class RecommendationResponse(BaseModel):
-    """Response from the recommendation engine.
-    AI Engineer: populate similarity_score, spi_score, final_score in recommender.py
-    """
     recipe: RecipeResponse
     similarity_score: float
     spi_score: float

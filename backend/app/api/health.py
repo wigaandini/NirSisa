@@ -1,7 +1,3 @@
-"""
-Health check endpoint — used by Railway for readiness probes.
-"""
-
 from fastapi import APIRouter
 from app.core.supabase import get_supabase
 
@@ -10,7 +6,6 @@ router = APIRouter(tags=["Health"])
 
 @router.get("/health")
 async def health_check():
-    """Check API and database connectivity."""
     try:
         sb = get_supabase()
         result = sb.table("recipe_categories").select("id").limit(1).execute()

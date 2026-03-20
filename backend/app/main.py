@@ -1,7 +1,3 @@
-"""
-NirSisa Backend — FastAPI application entry point.
-"""
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,7 +13,6 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS — allow mobile app to connect
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -26,7 +21,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
 app.include_router(health.router)
 app.include_router(inventory.router)
 app.include_router(recipes.router)

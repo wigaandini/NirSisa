@@ -1,9 +1,3 @@
-"""
-Inventory CRUD endpoints — Digital Kulkas.
-
-All endpoints require JWT auth via Supabase Auth.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import get_current_user_id
@@ -19,7 +13,6 @@ router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
 @router.get("", response_model=list[InventoryItemResponse])
 async def list_inventory(user_id: str = Depends(get_current_user_id)):
-    """Get all active inventory items with SPI scores and freshness status."""
     sb = get_supabase()
     result = (
         sb.table("inventory_with_spi")
@@ -36,7 +29,6 @@ async def add_item(
     item: InventoryItemCreate,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Add a new item to the user's inventory."""
     sb = get_supabase()
 
     row = {
@@ -50,8 +42,7 @@ async def add_item(
     if item.expiry_date:
         row["expiry_date"] = item.expiry_date.isoformat()
     elif item.is_natural:
-        # TODO (AI Engineer / SoftEng): estimate expiry from shelf_life_reference
-        # using Data Normalizer + fuzzy matching
+        # TODO: estimate expiry from shelf_life_reference
         pass
 
     result = sb.table("inventory_stock").insert(row).execute()
@@ -68,7 +59,6 @@ async def update_item(
     item: InventoryItemUpdate,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Update an inventory item (quantity, expiry, etc.)."""
     sb = get_supabase()
 
     updates = item.model_dump(exclude_none=True)
@@ -82,7 +72,7 @@ async def update_item(
         sb.table("inventory_stock")
         .update(updates)
         .eq("id", item_id)
-        .eq("user_id", user_id)  # RLS: only own items
+        .eq("user_id", user_id)
         .execute()
     )
 
@@ -97,7 +87,6 @@ async def delete_item(
     item_id: str,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Remove an item from inventory."""
     sb = get_supabase()
     result = (
         sb.table("inventory_stock")
