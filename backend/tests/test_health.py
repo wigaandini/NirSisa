@@ -37,7 +37,7 @@ def test_recommend_requires_auth(client):
 
 
 def test_legacy_recommend_no_auth(client):
-    # Legacy POST /recommend tetap jalan tanpa auth
+    # Legacy POST /recommend harus tetap jalan tanpa auth 
     response = client.post("/recommend", json={
         "ingredients": [
             {"name": "bayam", "days_left": 1},
@@ -46,14 +46,19 @@ def test_legacy_recommend_no_auth(client):
     })
     assert response.status_code == 200
     data = response.json()
+    assert "query_cleaned" in data
     assert "recommendations" in data
     assert len(data["recommendations"]) > 0
-    assert "title" in data["recommendations"][0]
-    assert "score" in data["recommendations"][0]
+    # Resep harus punya field dari versi teman
+    rec = data["recommendations"][0]
+    assert "title" in rec
+    assert "score" in rec
+    assert "similarity_component" in rec
+    assert "spi_component" in rec
 
 
 def test_health_ai_engine(client):
-    # Health endpoint harus juga report status AI engine
+    # Health endpoint harus juga report status AI engine 
     r = client.get("/health")
     assert r.status_code == 200
     data = r.json()
