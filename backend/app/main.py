@@ -1,23 +1,23 @@
 # NirSisa Backend - Main Application
-# Entry point FastAPI. Menggabungkan:
+# Entry point FastAPI, menggabungkan:
 # 1. Legacy endpoint (POST /recommend) dengan Sastrawi preprocessing
-# 2. Router-based endpoints (inventory, recipes, recommend, health)
+# 2. Router-based endpoints (inventory, recipes, recommend v1, health)
 
 # Endpoint:
 # Legacy (tanpa auth)
-# - GET  /                -> Status server
-# - POST /recommend       -> Rekomendasi resep (langsung dari request body, Sastrawi active)
+# - GET  /                 -> Status server
+# - POST /recommend        -> Rekomendasi resep (langsung dari request body, Sastrawi active)
 
 # Router-based (dengan JWT auth)
-# - GET  /health          -> Status server, DB, & AI engine
-# - GET  /inventory       -> Daftar stok user
-# - POST /inventory       -> Tambah bahan
-# - PATCH /inventory/{id} -> Update bahan
-# - DELETE /inventory/{id}-> Hapus bahan
-# - POST /inventory/reconcile -> Konfirmasi masak
-# - GET  /recipes         -> Browse resep
-# - GET  /recipes/{id}    -> Detail resep
-# - GET  /recommend       -> Rekomendasi resep (dari inventaris DB user)
+# - GET  /health           -> Status server, DB, & AI engine
+# - GET  /inventory        -> Daftar stok user
+# - POST /inventory        -> Tambah bahan
+# - PATCH /inventory/{id}  -> Update bahan
+# - DELETE /inventory/{id} -> Hapus bahan
+# - POST /inventory/reconcile  -> Konfirmasi masak
+# - GET  /recipes          -> Browse resep
+# - GET  /recipes/{id}     -> Detail resep
+# - GET  /recommend        -> Rekomendasi resep (dari inventaris DB user)
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Inisialisasi Sastrawi Stemmer (dari versi teman)
+# Inisialisasi Sastrawi Stemmer
 factory = StemmerFactory()
 stemmer = factory.create_stemmer()
 
@@ -60,23 +60,18 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(CURRENT_DIR, "ml_models")
 DATA_PATH = os.path.join(CURRENT_DIR, "data")
 
-# Legacy globals
-vectorizer = None
-tfidf_matrix = None
-df_recipes = None
-
-
-def _load_legacy_models():
-    # Load model untuk legacy endpoint POST /recommend
-    global vectorizer, tfidf_matrix, df_recipes
-    try:
-        vectorizer = joblib.load(os.path.join(MODEL_PATH, "tfidf_vectorizer.pkl"))
-        tfidf_matrix = joblib.load(os.path.join(MODEL_PATH, "recipe_matrix.pkl"))
-        df_recipes = pd.read_pickle(os.path.join(DATA_PATH, "recipe_data.pkl"))
-        df_recipes["Ingredients Cleaned"] = df_recipes["Ingredients Cleaned"].fillna("")
-        logger.info("AI Assets Loaded Successfully: %d resep", len(df_recipes))
-    except Exception as e:
-        logger.error("Critical Error loading models: %s", e)
+# Load assets (model dan data) di top-level
+try:
+    vectorizer = joblib.load(os.path.join(MODEL_PATH, "tfidf_vectorizer.pkl"))
+    tfidf_matrix = joblib.load(os.path.join(MODEL_PATH, "recipe_matrix.pkl"))
+    df_recipes = pd.read_pickle(os.path.join(DATA_PATH, "recipe_data.pkl"))
+    df_recipes["Ingredients Cleaned"] = df_recipes["Ingredients Cleaned"].fillna("")
+    print("AI Assets Loaded Successfully")
+except Exception as e:
+    print(f"Critical Error loading models: {e}")
+    vectorizer = None
+    tfidf_matrix = None
+    df_recipes = None
 
 
 # Legacy schemas
@@ -89,7 +84,7 @@ class RecommendRequest(BaseModel):
     ingredients: List[IngredientItem]
 
 
-# Preprocessing pipeline (dari versi teman, Sastrawi)
+# Preprocessing pipeline (Sastrawi)
 def preprocess_pipeline(text: str):
     # Lowercasing
     text = text.lower()
@@ -111,10 +106,7 @@ def calculate_spi(days_remaining, alpha=2.0):
 async def lifespan(app: FastAPI):
     logger.info("=== NirSisa Backend Starting ===")
 
-    # Load legacy models (untuk POST /recommend)
-    _load_legacy_models()
-
-    # Load AI Knowledge Base baru (untuk GET /recommend via router)
+    # Load AI Knowledge Base (untuk GET /recommend via router)
     try:
         from app.ai.cbf import RecipeKnowledgeBase
         kb = RecipeKnowledgeBase.get_instance()
@@ -157,8 +149,7 @@ def create_app() -> FastAPI:
     app.include_router(recipes_router)
     app.include_router(recommend_router)
 
-    # LEGACY ENDPOINTS
-
+    # LEGACY ENDPOINTS (dengan Sastrawi preprocessing)
     @app.get("/", tags=["Legacy"])
     def read_root():
         return {
@@ -171,6 +162,7 @@ def create_app() -> FastAPI:
     def recommend(request: RecommendRequest):
         # Endpoint legacy: rekomendasi langsung dari request body (tanpa auth)
         # Menggunakan Sastrawi preprocessing pipeline
+         
         try:
             if vectorizer is None or tfidf_matrix is None or df_recipes is None:
                 raise HTTPException(status_code=503, detail="Models not loaded")
