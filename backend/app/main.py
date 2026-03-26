@@ -7,12 +7,11 @@ import joblib
 import os
 import re
 from sklearn.metrics.pairwise import cosine_similarity
-from Sastrawi.Stemmer.StemmerFactory import StemmerFactory # <--- Tambahan Sastrawi
+from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
 app = FastAPI(title="NirSisa API - AI Powered Food Waste Mitigation")
 
-# --- INITIALIZATION ---
-# Inisialisasi Sastrawi Stemmer (diluar route agar tidak memperlambat request)
+# Inisialisasi Sastrawi Stemmer
 factory = StemmerFactory()
 stemmer = factory.create_stemmer()
 
@@ -30,7 +29,7 @@ try:
 except Exception as e:
     print(f"Critical Error loading models: {e}")
 
-# --- SCHEMAS ---
+# Schema (harus disesuaikan dengan input yang diharapkan dari frontend)
 class IngredientItem(BaseModel):
     name: str
     days_left: int
@@ -38,27 +37,25 @@ class IngredientItem(BaseModel):
 class RecommendRequest(BaseModel):
     ingredients: List[IngredientItem]
 
-# --- PRE-PROCESSING PIPELINE (Sesuai Poin 6 Dokumen) ---
+# Preprocessing pipeline
 def preprocess_pipeline(text: str):
-    # 1. Lowercasing
+    # Lowercasing
     text = text.lower()
     
-    # 2. Tokenisasi & Pembersihan Karakter (Punctuation Removal)
-    # Menghapus simbol dan angka, menyisakan huruf saja
+    # Tokenisasi & Pembersihan Karakter (Punctuation Removal)
     text = re.sub(r'[^a-zA-Z\s]', '', text)
     
-    # 3. Stemming Sastrawi (Bahasa Indonesia)
-    # Ini mengubah kata seperti "memasakkan" menjadi "masak"
+    # 3. Stemming Sastrawi
     stemmed_text = stemmer.stem(text)
     
     return stemmed_text
 
-# --- AI LOGIC ---
+# AI Logic
 def calculate_spi(days_remaining, alpha=2.0):
     """Menghitung Spoilage Proximity Index sesuai rumus dokumen"""
     return 1 / ((days_remaining + 1) ** alpha)
 
-# --- ROUTES ---
+# Routes
 @app.get("/")
 def read_root():
     return {
@@ -73,21 +70,20 @@ def recommend(request: RecommendRequest):
         if not request.ingredients:
             raise HTTPException(status_code=400, detail="Inventory is empty")
 
-        # 1. Ambil data mentah dari request
+        # Ambil data mentah dari request
         raw_user_ingredients = [item.name for item in request.ingredients]
         inventory_expiry = {item.name: item.days_left for item in request.ingredients}
         
-        # 2. IMPLEMENTASI PRE-PROCESSING PIPELINE (Poin 6)
         # Gabungkan semua nama bahan menjadi satu string lalu bersihkan
         user_input_string = ' '.join(raw_user_ingredients)
         cleaned_user_input = preprocess_pipeline(user_input_string)
         
-        # 3. CONTENT-BASED FILTERING (Cosine Similarity)
+        # 3. Content based filtering (Cosine Similarity)
         # Transformasi input yang sudah bersih menjadi vektor TF-IDF
         user_vector = vectorizer.transform([cleaned_user_input])
         cos_sim = cosine_similarity(user_vector, tfidf_matrix).flatten()
         
-        # 4. SPI RE-RANKING (Novelty NirSisa)
+        # 4. SPI Re-ranking
         spi_scores = np.zeros(len(df_recipes))
         for item in request.ingredients:
             # Preprocess nama bahan secara individu untuk pencarian akurat
@@ -99,10 +95,10 @@ def recommend(request: RecommendRequest):
             mask = df_recipes['Ingredients Cleaned'].str.contains(clean_ing_name, case=False, na=False)
             spi_scores[mask] += urgency_score
             
-        # 5. FINAL HYBRID SCORING (w1=0.6, w2=0.4)
+        # Final Scoring
         final_scores = (cos_sim * 0.6) + (spi_scores * 0.4)
         
-        # 6. SORTING TOP 10
+        # Sorting Top 10 Rekomendasi
         top_indices = final_scores.argsort()[-10:][::-1]
         
         results = []
