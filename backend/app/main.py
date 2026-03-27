@@ -1,24 +1,4 @@
 # NirSisa Backend - Main Application
-# Entry point FastAPI, menggabungkan:
-# 1. Legacy endpoint (POST /recommend) dengan Sastrawi preprocessing
-# 2. Router-based endpoints (inventory, recipes, recommend v1, health)
-
-# Endpoint:
-# Legacy (tanpa auth)
-# - GET  /                 -> Status server
-# - POST /recommend        -> Rekomendasi resep (langsung dari request body, Sastrawi active)
-
-# Router-based (dengan JWT auth)
-# - GET  /health           -> Status server, DB, & AI engine
-# - GET  /inventory        -> Daftar stok user
-# - POST /inventory        -> Tambah bahan
-# - PATCH /inventory/{id}  -> Update bahan
-# - DELETE /inventory/{id} -> Hapus bahan
-# - POST /inventory/reconcile  -> Konfirmasi masak
-# - GET  /recipes          -> Browse resep
-# - GET  /recipes/{id}     -> Detail resep
-# - GET  /recommend        -> Rekomendasi resep (dari inventaris DB user)
-
 from __future__ import annotations
 
 import logging
@@ -27,17 +7,18 @@ import re
 from contextlib import asynccontextmanager
 from typing import List
 
+import numpy as np
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
-import numpy as np
-import pandas as pd
-import joblib
 from sklearn.metrics.pairwise import cosine_similarity
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+from app.core.supabase import get_supabase
 
+# Core & Config
 from app.core.config import get_settings
+from app.ai.cbf import RecipeKnowledgeBase  # Pastikan singleton ini benar
 
 # Routers
 from app.api.health import router as health_router
@@ -45,82 +26,65 @@ from app.api.inventory import router as inventory_router
 from app.api.recipes import router as recipes_router
 from app.api.recommend import router as recommend_router
 
+# Logging Setup
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Inisialisasi Sastrawi Stemmer
+
+# Inisialisasi Sastrawi (Global agar tidak re-init setiap request)
 factory = StemmerFactory()
 stemmer = factory.create_stemmer()
 
-# Path setup untuk model dan data
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(CURRENT_DIR, "ml_models")
-DATA_PATH = os.path.join(CURRENT_DIR, "data")
-
-# Load assets (model dan data) di top-level
-try:
-    vectorizer = joblib.load(os.path.join(MODEL_PATH, "tfidf_vectorizer.pkl"))
-    tfidf_matrix = joblib.load(os.path.join(MODEL_PATH, "recipe_matrix.pkl"))
-    df_recipes = pd.read_pickle(os.path.join(DATA_PATH, "recipe_data.pkl"))
-    df_recipes["Ingredients Cleaned"] = df_recipes["Ingredients Cleaned"].fillna("")
-    print("AI Assets Loaded Successfully")
-except Exception as e:
-    print(f"Critical Error loading models: {e}")
-    vectorizer = None
-    tfidf_matrix = None
-    df_recipes = None
-
-
-# Legacy schemas
-class IngredientItem(BaseModel):
-    name: str
-    days_left: int
-
-
-class RecommendRequest(BaseModel):
-    ingredients: List[IngredientItem]
-
-
-# Preprocessing pipeline (Sastrawi)
 def preprocess_pipeline(text: str):
-    # Lowercasing
+    """Pipeline pembersihan teks sesuai Metodologi Poin 6"""
     text = text.lower()
-    # Tokenisasi & Pembersihan Karakter (Punctuation Removal)
     text = re.sub(r'[^a-zA-Z\s]', '', text)
-    # Stemming Sastrawi
-    stemmed_text = stemmer.stem(text)
-    return stemmed_text
+    return stemmer.stem(text)
 
-
-# AI Logic
-def calculate_spi(days_remaining, alpha=2.0):
-    # Menghitung Spoilage Proximity Index
+def calculate_spi(days_remaining: int, alpha: float = 2.0):
+    """Logika Spoilage Proximity Index (Novelty NirSisa)"""
     return 1 / ((days_remaining + 1) ** alpha)
 
+# --- LIFESPAN (MANAGEMENT STARTUP/SHUTDOWN) ---
 
-# Lifespan – load models saat startup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Mengelola siklus hidup aplikasi. 
+    Memastikan Model AI dimuat hanya sekali saat startup.
+    """
     logger.info("=== NirSisa Backend Starting ===")
-
-    # Load AI Knowledge Base (untuk GET /recommend via router)
+    
     try:
-        from app.ai.cbf import RecipeKnowledgeBase
+        # Gunakan Singleton RecipeKnowledgeBase untuk memuat aset AI
         kb = RecipeKnowledgeBase.get_instance()
         kb.load()
-        logger.info("AI Engine siap: %d resep dimuat.", len(kb.df_recipes))
+        
+        # Simpan reference ke app state agar bisa diakses oleh legacy endpoint
+        app.state.ai_engine = kb
+        
+        logger.info(f"AI Engine Berhasil Dimuat: {len(kb.df_recipes)} resep tersedia.")
     except Exception as e:
-        logger.error("GAGAL memuat AI Engine: %s", e)
-        logger.warning("Server tetap berjalan, tapi GET /recommend akan error.")
+        logger.error(f"KRITIS: Gagal memuat AI Engine: {e}")
+        app.state.ai_engine = None
 
     yield
     logger.info("=== NirSisa Backend Shutting Down ===")
 
+# --- SCHEMAS (LEGACY) ---
 
-# App Factory
+class IngredientItem(BaseModel):
+    name: str
+    days_left: int
+
+class RecommendRequest(BaseModel):
+    ingredients: List[IngredientItem]
+
+# --- APP FACTORY ---
+
 def create_app() -> FastAPI:
     settings = get_settings()
 
@@ -134,7 +98,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS
+    # CORS Middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
@@ -143,87 +107,105 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Register routers (tanpa prefix tambahan, router sudah punya prefix sendiri)
+    # Register Modern Routers
     app.include_router(health_router)
     app.include_router(inventory_router)
     app.include_router(recipes_router)
     app.include_router(recommend_router)
 
-    # LEGACY ENDPOINTS (dengan Sastrawi preprocessing)
+    # --- LEGACY ENDPOINTS (STAY IN MAIN FOR COMPATIBILITY) ---
+
     @app.get("/", tags=["Legacy"])
     def read_root():
         return {
             "status": "NirSisa Backend is Online",
-            "version": "1.0.0",
-            "pipeline": "TF-IDF + Cosine Similarity + SPI Re-ranking (Sastrawi Active)"
+            "version": settings.APP_VERSION,
+            "engine": "TF-IDF + Cosine Similarity + SPI Re-ranking (Sastrawi Active)"
         }
 
     @app.post("/recommend", tags=["Legacy"])
-    def recommend(request: RecommendRequest):
-        # Endpoint legacy: rekomendasi langsung dari request body (tanpa auth)
-        # Menggunakan Sastrawi preprocessing pipeline
-         
+    def recommend_legacy(request: RecommendRequest):
+        """
+        Endpoint legacy: Rekomendasi langsung dari request body (Stateless).
+        Mengambil model dari app.state yang di-load saat lifespan.
+        """
+        engine = app.state.ai_engine
+        
+        if not engine or engine.vectorizer is None:
+            raise HTTPException(status_code=503, detail="AI Engine is not ready")
+
+        if not request.ingredients:
+            raise HTTPException(status_code=400, detail="Inventory list cannot be empty")
+
         try:
-            if vectorizer is None or tfidf_matrix is None or df_recipes is None:
-                raise HTTPException(status_code=503, detail="Models not loaded")
-
-            if not request.ingredients:
-                raise HTTPException(status_code=400, detail="Inventory is empty")
-
-            # Ambil data mentah dari request
-            raw_user_ingredients = [item.name for item in request.ingredients]
+            # 1. Preprocessing Input User
+            raw_names = [item.name for item in request.ingredients]
             inventory_expiry = {item.name: item.days_left for item in request.ingredients}
+            
+            cleaned_query = preprocess_pipeline(" ".join(raw_names))
 
-            # Gabungkan semua nama bahan menjadi satu string lalu bersihkan
-            user_input_string = ' '.join(raw_user_ingredients)
-            cleaned_user_input = preprocess_pipeline(user_input_string)
+            # 2. Content-Based Filtering (Cosine Similarity)
+            user_vec = engine.vectorizer.transform([cleaned_query])
+            cos_sim = cosine_similarity(user_vec, engine.tfidf_matrix).flatten()
 
-            # Content based filtering (Cosine Similarity)
-            user_vector = vectorizer.transform([cleaned_user_input])
-            cos_sim = cosine_similarity(user_vector, tfidf_matrix).flatten()
-
-            # SPI Re-ranking
-            spi_scores = np.zeros(len(df_recipes))
+            # 3. SPI Re-ranking (Novelty)
+            spi_scores = np.zeros(len(engine.df_recipes))
+            
             for item in request.ingredients:
-                # Preprocess nama bahan secara individu untuk pencarian akurat
-                clean_ing_name = preprocess_pipeline(item.name)
-                urgency_score = calculate_spi(item.days_left)
-
-                # Cari resep yang mengandung bahan kritis tersebut
-                mask = df_recipes['Ingredients Cleaned'].str.contains(
-                    clean_ing_name, case=False, na=False
+                clean_name = preprocess_pipeline(item.name)
+                urgency = calculate_spi(item.days_left)
+                
+                # Cari bahan di dataframe yang sudah di-load di engine
+                mask = engine.df_recipes['Ingredients Cleaned'].str.contains(
+                    clean_name, case=False, na=False
                 )
-                spi_scores[mask] += urgency_score
+                spi_scores[mask] += urgency
 
-            # Final Scoring
+            # 4. Final Hybrid Scoring (w1=0.6, w2=0.4 sesuai ERD/Dokumen)
             final_scores = (cos_sim * 0.6) + (spi_scores * 0.4)
-
-            # Sorting Top 10 Rekomendasi
             top_indices = final_scores.argsort()[-10:][::-1]
 
-            results = []
+            # 5. Build Result
+            recommendations = []
             for idx in top_indices:
-                results.append({
-                    "title": df_recipes.iloc[idx]['Title'],
+                row = engine.df_recipes.iloc[idx]
+                recommendations.append({
+                    "title": row['Title'],
                     "score": round(float(final_scores[idx]), 4),
-                    "similarity_component": round(float(cos_sim[idx]), 4),
-                    "spi_component": round(float(spi_scores[idx]), 4),
-                    "ingredients": df_recipes.iloc[idx]['Ingredients'],
-                    "steps": df_recipes.iloc[idx]['Steps']
+                    "similarity_score": round(float(cos_sim[idx]), 4),
+                    "spi_score": round(float(spi_scores[idx]), 4),
+                    "ingredients": row['Ingredients'],
+                    "steps": row['Steps']
                 })
 
             return {
-                "query_cleaned": cleaned_user_input,
-                "recommendations": results
+                "query_cleaned": cleaned_query,
+                "results_count": len(recommendations),
+                "recommendations": recommendations
             }
 
-        except HTTPException:
-            raise
         except Exception as e:
-            logger.error("Internal Server Error: %s", e)
-            raise HTTPException(status_code=500, detail="Check server logs for details")
+            logger.error(f"Legacy Recommend Error: {e}")
+            raise HTTPException(status_code=500, detail="Internal AI Engine Error")
 
     return app
 
-
+# Entry Point
 app = create_app()
+
+# Tambahkan ini di bagian import paling atas
+
+# Tambahkan endpoint ini di dalam create_app()
+@app.post("/auth/login", tags=["Auth"])
+async def login_for_testing(email: str, password: str):
+    sb = get_supabase()
+    try:
+        # Mencoba login langsung ke Supabase
+        auth_response = sb.auth.sign_in_with_password({"email": email, "password": password})
+        return {
+            "access_token": auth_response.session.access_token,
+            "token_type": "bearer",
+            "user_id": auth_response.user.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

@@ -1,6 +1,6 @@
 # CRUD inventaris bahan makanan + Inventory Reconciliation
-
 from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List
 
 from app.core.auth import get_current_user_id
 from app.core.supabase import get_supabase
@@ -20,14 +20,17 @@ from app.services.normalizer import normalize_ingredient_name
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
-
 # GET  /inventory  — Daftar seluruh stok user
 @router.get("", response_model=list[InventoryItemResponse])
 async def list_inventory(user_id: str = Depends(get_current_user_id)):
-    # Ambil seluruh inventaris milik user, diperkaya dengan SPI score 
+    """
+    Ambil seluruh inventaris milik user berdasarkan Token JWT.
+    Hasil diperkaya dengan perhitungan SPI score dan indikator kesegaran.
+    """
     sb = get_supabase()
 
     try:
+        # Mencoba ambil dari View (kalkulasi SPI di level DB)
         result = (
             sb.table("inventory_with_spi")
             .select("*")
@@ -36,6 +39,7 @@ async def list_inventory(user_id: str = Depends(get_current_user_id)):
             .execute()
         )
     except Exception:
+        # Fallback ke tabel mentah jika View belum tersedia
         result = (
             sb.table("inventory_stock")
             .select("*")
@@ -53,11 +57,10 @@ async def add_item(
     item: InventoryItemCreate,
     user_id: str = Depends(get_current_user_id),
 ):
-    # Tambah bahan ke inventaris
-    # - Nama bahan akan dinormalisasi otomatis (fuzzy matching)
-    # - Jika `is_natural=true` dan `expiry_date` kosong, sistem
-    #   mengestimasi kedaluwarsa berdasarkan shelf-life reference
-
+    """
+    Tambah bahan ke inventaris dengan verifikasi identitas user.
+    Nama bahan dinormalisasi otomatis menggunakan Sastrawi.
+    """
     sb = get_supabase()
 
     row = prepare_insert_row(
@@ -84,12 +87,10 @@ async def update_item(
     item: InventoryItemUpdate,
     user_id: str = Depends(get_current_user_id),
 ):
-    # Update parsial item inventaris (nama, kuantitas, unit, tanggal kedaluwarsa) 
+    """Update detail bahan milik user."""
     sb = get_supabase()
-
     updates = item.model_dump(exclude_none=True)
 
-    # Normalisasi nama jika diubah
     if "item_name" in updates:
         updates["item_name_normalized"] = normalize_ingredient_name(updates["item_name"])
 
@@ -108,7 +109,7 @@ async def update_item(
     )
 
     if not result.data:
-        raise HTTPException(status_code=404, detail="Item tidak ditemukan.")
+        raise HTTPException(status_code=404, detail="Item tidak ditemukan atau bukan milik Anda.")
 
     return enrich_inventory_item(result.data[0])
 
@@ -119,7 +120,7 @@ async def delete_item(
     item_id: str,
     user_id: str = Depends(get_current_user_id),
 ):
-    # Hapus satu item dari inventaris 
+    """Hapus bahan dari inventaris."""
     sb = get_supabase()
     result = (
         sb.table("inventory_stock")
@@ -130,7 +131,7 @@ async def delete_item(
     )
 
     if not result.data:
-        raise HTTPException(status_code=404, detail="Item tidak ditemukan.")
+        raise HTTPException(status_code=404, detail="Item tidak ditemukan atau bukan milik Anda.")
 
 
 # POST /inventory/reconcile  — Konfirmasi masak
@@ -139,13 +140,7 @@ async def reconcile(
     body: ReconciliationRequest,
     user_id: str = Depends(get_current_user_id),
 ):
-    # Kurangi stok secara otomatis setelah user selesai memasak.
-
-    # Endpoint ini:
-    # 1. Mengurangi kuantitas setiap bahan yang digunakan
-    # 2. Menghapus bahan yang stoknya habis (qty ≤ 0)
-    # 3. Mencatat ke consumption_history_log
-
+    """Proses pengurangan stok otomatis setelah memasak (Inventory Reconciliation)."""
     try:
         result = reconcile_inventory(
             user_id=user_id,
