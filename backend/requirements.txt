@@ -1,4 +1,4 @@
-# --- Core Web Framework ---
+# Web Framework & Server
 fastapi==0.135.1
 uvicorn==0.42.0
 pydantic==2.12.5
@@ -6,19 +6,19 @@ pydantic-settings==2.13.1
 python-dotenv==1.2.2
 httpx==0.28.1
 
-# --- Database & Cloud ---
+# Database
 supabase==2.28.3
 
-# --- Auth & Security ---
+# Security & Auth
 PyJWT==2.12.1
 cryptography==46.0.6
 
-# --- AI & Machine Learning (PENTING: Versi harus sama agar file .pkl bisa dibuka) ---
+# AI & Data (PENTING: Harus sinkron dengan versi saat membuat .pkl)
 numpy==2.4.3
 pandas==3.0.1
 scikit-learn==1.8.0
 scipy==1.16.3
 joblib==1.5.2
 
-# --- NLP (Bahasa Indonesia) ---
+# NLP Indonesia
 Sastrawi==1.0.1
