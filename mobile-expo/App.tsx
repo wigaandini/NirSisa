@@ -1,12 +1,20 @@
 import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import { useFonts, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
+import { View, StyleSheet, ActivityIndicator } from "react-native";
+import { NavigationContainer } from "@react-navigation/native";
+import {
+  useFonts,
+  Inter_400Regular,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from "@expo-google-fonts/inter";
 import SplashScreen from "./src/screens/SplashScreen";
+import AppNavigator from "./src/navigation/AppNavigator";
 
 const App: React.FC = () => {
   const [isSplashDone, setIsSplashDone] = useState(false);
 
   const [fontsLoaded] = useFonts({
+    Inter_400Regular,
     Inter_600SemiBold,
     Inter_700Bold,
   });
@@ -30,9 +38,9 @@ const App: React.FC = () => {
   }
 
   return (
-    <View style={styles.mainContainer}>
-      <Text style={styles.placeholderText}>Selamat datang di NirSisa!</Text>
-    </View>
+    <NavigationContainer>
+      <AppNavigator />
+    </NavigationContainer>
   );
 };
 
@@ -41,18 +49,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#C4967A",
-  },
-  mainContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FAFAFA",
-  },
-  placeholderText: {
-    fontSize: 20,
-    fontFamily: "Inter_600SemiBold",
-    color: "#2B2B2B",
+    backgroundColor: "#B08070",
   },
 });
 
