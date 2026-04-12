@@ -10,6 +10,11 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import TambahBahanModal, { BahanBaru } from "../components/TambahBahanModal";
+import StokFilterModal, { DEFAULT_STOK_FILTER, StokFilter } from "../components/StokFilterModal";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { RootStackParamList } from "../navigation/AppNavigator";
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
@@ -53,7 +58,21 @@ const STOCK_DATA: StockCategory[] = [
 ];
 
 const StokScreen: React.FC = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [searchQuery, setSearchQuery] = useState("");
+  const [tambahVisible, setTambahVisible] = useState(false);
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<StokFilter>(DEFAULT_STOK_FILTER);
+
+  const filterActive =
+    activeFilter.sortBy !== null ||
+    activeFilter.kategori.length > 0 ||
+    activeFilter.status.length > 0;
+
+  const handleSaveBahan = (bahan: BahanBaru) => {
+    // TODO: integrate with backend / state management
+    console.log("Bahan baru:", bahan);
+  };
 
   return (
     <View style={styles.flex}>
@@ -66,7 +85,7 @@ const StokScreen: React.FC = () => {
         <View style={styles.header}>
           <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifButton}>
+            <TouchableOpacity style={styles.notifButton} onPress={() => navigation.navigate("Notification")}>
               <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
             </TouchableOpacity>
             <View style={styles.avatar}>
@@ -87,13 +106,16 @@ const StokScreen: React.FC = () => {
               onChangeText={setSearchQuery}
             />
           </View>
-          <TouchableOpacity style={styles.filterButton}>
-            <Ionicons name="options-outline" size={22} color="#2B2B2B" />
+          <TouchableOpacity
+            style={[styles.filterButton, filterActive && styles.filterButtonActive]}
+            onPress={() => setFilterVisible(true)}
+          >
+            <Ionicons name="options-outline" size={22} color={filterActive ? "#FFFFFF" : "#2B2B2B"} />
           </TouchableOpacity>
         </View>
 
         {/* Add Stock Button */}
-        <TouchableOpacity style={styles.addButton}>
+        <TouchableOpacity style={styles.addButton} onPress={() => setTambahVisible(true)}>
           <Text style={styles.addButtonText}>Tambah Stok Bahan</Text>
         </TouchableOpacity>
 
@@ -164,6 +186,18 @@ const StokScreen: React.FC = () => {
 
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      <TambahBahanModal
+        visible={tambahVisible}
+        onSave={handleSaveBahan}
+        onClose={() => setTambahVisible(false)}
+      />
+      <StokFilterModal
+        visible={filterVisible}
+        initialFilter={activeFilter}
+        onApply={setActiveFilter}
+        onClose={() => setFilterVisible(false)}
+      />
     </View>
   );
 };
@@ -234,6 +268,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#F0F0F0",
     alignItems: "center",
     justifyContent: "center",
+  },
+  filterButtonActive: {
+    backgroundColor: "#BB0009",
   },
   addButton: {
     backgroundColor: "#BB0009",

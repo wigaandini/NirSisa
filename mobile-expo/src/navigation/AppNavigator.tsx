@@ -7,19 +7,26 @@ import LoginScreen from "../screens/LoginScreen";
 import SignUpScreen from "../screens/SignUpScreen";
 import HomeScreen from "../screens/HomeScreen";
 import StokScreen from "../screens/StokScreen";
-import {
-  ChefAIScreen,
-  RiwayatScreen,
-  ProfilScreen,
-} from "../screens/PlaceholderScreen";
+import ProfilScreen from "../screens/ProfilScreen";
+import RiwayatScreen from "../screens/RiwayatScreen";
+import RecipeRecommendationScreen from "../screens/RecipeRecommendationScreen";
+import RecipeDetailScreen from "../screens/RecipeDetailScreen";
+import NotificationScreen from "../screens/NotificationScreen";
 
 export type RootStackParamList = {
   Login: undefined;
   SignUp: undefined;
-  Main: undefined;
+  Main: { screen?: string } | undefined;
+  Notification: undefined;
+};
+
+export type ChefAIStackParamList = {
+  RecipeRecommendation: undefined;
+  RecipeDetail: { recipeId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const ChefAIStack = createNativeStackNavigator<ChefAIStackParamList>();
 const Tab = createBottomTabNavigator();
 
 const TAB_ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
@@ -34,6 +41,13 @@ const ChefAITabIcon = ({ focused, size }: { focused: boolean; size: number }) =>
   <View style={styles.chefAIButton}>
     <Ionicons name="sparkles" size={size} color="#FFFFFF" />
   </View>
+);
+
+const ChefAINavigator: React.FC = () => (
+  <ChefAIStack.Navigator screenOptions={{ headerShown: false }}>
+    <ChefAIStack.Screen name="RecipeRecommendation" component={RecipeRecommendationScreen} />
+    <ChefAIStack.Screen name="RecipeDetail" component={RecipeDetailScreen} />
+  </ChefAIStack.Navigator>
 );
 
 const MainTabs: React.FC = () => {
@@ -67,7 +81,7 @@ const MainTabs: React.FC = () => {
       />
       <Tab.Screen
         name="ChefAI"
-        component={ChefAIScreen}
+        component={ChefAINavigator}
         options={{
           tabBarLabel: "CHEF AI",
           tabBarActiveTintColor: "#BB0009",
@@ -96,6 +110,7 @@ const AppNavigator: React.FC = () => {
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
       <Stack.Screen name="Main" component={MainTabs} />
+      <Stack.Screen name="Notification" component={NotificationScreen} />
     </Stack.Navigator>
   );
 };

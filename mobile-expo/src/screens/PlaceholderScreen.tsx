@@ -25,9 +25,6 @@ export const RiwayatScreen = () => (
   <PlaceholderScreen title="Riwayat" icon="time-outline" />
 );
 
-export const ProfilScreen = () => (
-  <PlaceholderScreen title="Profil" icon="person-outline" />
-);
 
 const styles = StyleSheet.create({
   container: {

@@ -9,6 +9,9 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { RootStackParamList } from "../navigation/AppNavigator";
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
@@ -38,6 +41,7 @@ const RECIPES = [
 ];
 
 const HomeScreen: React.FC = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <View style={styles.flex}>
       <ScrollView
@@ -49,7 +53,7 @@ const HomeScreen: React.FC = () => {
         <View style={styles.header}>
           <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifButton}>
+            <TouchableOpacity style={styles.notifButton} onPress={() => navigation.navigate("Notification")}>
               <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
             </TouchableOpacity>
             <View style={styles.avatar}>
@@ -102,7 +106,7 @@ const HomeScreen: React.FC = () => {
         {/* Rekomendasi Chef AI */}
         <View style={[styles.sectionHeader, { marginTop: 28 }]}>
           <Text style={styles.sectionTitle}>Rekomendasi Chef AI</Text>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate("Main", { screen: "ChefAI" })}>
             <Text style={styles.seeAll}>LIHAT SEMUA</Text>
           </TouchableOpacity>
         </View>
