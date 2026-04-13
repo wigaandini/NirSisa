@@ -179,17 +179,24 @@ const StokScreen: React.FC = () => {
     return groups;
   }, [inventory, searchQuery]);
 
-  const getStatusDisplay = (status: string, days: number) => {
-    switch (status) {
-      case "expired": // Ubah dari 'critical' ke 'expired' sesuai DB Anda
-        return { label: "EXPIRED", color: "#BB0009" };
-      case "warning": 
-        return { label: `${days} HARI LAGI`, color: "#FDCB52" };      
-      case "fresh": 
-        return { label: "SEGAR", color: "#15803D" };
-      default: 
-        return { label: "CEK FISIK", color: "#949FA2" };
+  const getStatusDisplay = (_status: string, days: number) => {
+    if (days <= 0) {
+      return { label: "EXPIRED", color: "#BB0009" };
     }
+
+    if (days === 1) {
+      return { label: "BESOK", color: "#BB0009" };
+    }
+
+    if (days <= 2) {
+      return { label: `${days} HARI LAGI`, color: "#BB0009" };
+    }
+
+    if (days <= 5) {
+      return { label: `${days} HARI LAGI`, color: "#FDCB52" };
+    }
+
+    return { label: "SEGAR", color: "#15803D" };
   };
 
   return (
@@ -506,6 +513,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 11,
     letterSpacing: 0.3,
+    color: "#FFFFFF",
   },
   emptyState: { alignItems: 'center', marginTop: 40 },
   emptyText: { color: '#949FA2' }

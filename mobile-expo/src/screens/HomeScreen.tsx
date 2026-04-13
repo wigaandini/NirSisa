@@ -137,6 +137,27 @@ const HomeScreen: React.FC = () => {
     return { label: `${days} HARI LAGI`, color: days <= 2 ? "#BB0009" : "#FDCB52" };
   };
 
+  const getCardColors = (days: number) => {
+    if (days <= 2) {
+      return {
+        backgroundColor: "#FEF2F2",
+        borderColor: "#FEE2E2",
+      };
+    }
+
+    if (days <= 5) {
+      return {
+        backgroundColor: "#FFF8E1",
+        borderColor: "#FDCB52",
+      };
+    }
+
+    return {
+      backgroundColor: "#DCFCE7",
+      borderColor: "#15803D",
+    };
+  };
+
   if (loading) {
     return (
       <View style={[styles.flex, { justifyContent: 'center' }]}>
@@ -190,14 +211,27 @@ const HomeScreen: React.FC = () => {
 
         {expiringItems.map((item) => {
           const badge = getBadgeInfo(item.days_remaining);
+          const cardColors = getCardColors(item.days_remaining);
+
           return (
-            <TouchableOpacity key={item.id} style={styles.expiryCard}>
+            <TouchableOpacity
+              key={item.id}
+              style={[
+                styles.expiryCard,
+                {
+                  backgroundColor: cardColors.backgroundColor,
+                  borderColor: cardColors.borderColor,
+                },
+              ]}
+            >
               <View style={[styles.expiryBadge, { backgroundColor: badge.color }]}>
                 <Text style={styles.expiryBadgeText}>{badge.label}</Text>
               </View>
               <View style={styles.expiryInfo}>
                 <Text style={styles.expiryName}>{item.item_name}</Text>
-                <Text style={styles.expiryQty}>{item.quantity} {item.unit}</Text>
+                <Text style={styles.expiryQty}>
+                  {item.quantity} {item.unit}
+                </Text>
               </View>
             </TouchableOpacity>
           );
@@ -314,13 +348,11 @@ const styles = StyleSheet.create({
   expiryCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEF2F2",
     borderRadius: 14,
     paddingVertical: 16,
     paddingHorizontal: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#FEE2E2",
   },
   expiryBadge: {
     borderRadius: 8,
