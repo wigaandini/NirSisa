@@ -31,7 +31,7 @@ interface InventoryItem {
   quantity: number;
   unit: string;
   category_name: string | null;
-  freshness_status: "critical" | "warning" | "fresh" | "unknown";
+  freshness_status: "expired" | "warning" | "fresh" | "unknown";
   days_remaining: number;
 }
 
@@ -48,33 +48,67 @@ const StokScreen: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<StokFilter>(DEFAULT_STOK_FILTER);
 
   const fetchInventory = async () => {
-    if (!session?.user?.id) return;
-    setLoading(true);
-    try {
-      // 1. Coba ambil dari VIEW
-      const { data, error } = await supabase
-        .from("inventory_with_spi")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .gt("quantity", 0)
-        .order("expiry_date", { ascending: true });
+  if (!session?.user?.id) return;
+  setLoading(true);
 
-      // 2. Logika Fallback jika View bermasalah atau kosong
-      if (error || !data || data.length === 0) {
-        const { data: rawData, error: rawError } = await supabase
-          .from("inventory_stock")
-          .select("*")
-          .eq("user_id", session.user.id)
-          .gt("quantity", 0)
-          .order("expiry_date", { ascending: true });
+  try {
+    let query = supabase
+      .from("inventory_with_spi")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .gt("quantity", 0);
 
-        if (rawError) throw rawError;
-        setInventory(rawData || []);
+    // --- FIX FILTER KATEGORI ---
+    if (activeFilter.kategori.length > 0) {
+      const selectedCats = activeFilter.kategori;
+      const hasLainLain = selectedCats.includes("Lain-lain" as any);
+      
+      // Ambil kategori selain "Lain-lain"
+      const actualCats = selectedCats.filter(c => c !== ("Lain-lain" as any));
+
+      if (hasLainLain && actualCats.length > 0) {
+        // Skenario: Pilih "Lain-lain" DAN kategori lain (misal: Sayuran)
+        // Query: category_name ada di list ATAU category_name IS NULL
+        query = query.or(`category_name.in.(${actualCats.join(",")}),category_name.is.null`);
+      } else if (hasLainLain) {
+        // Skenario: HANYA pilih "Lain-lain"
+        query = query.is("category_name", null);
       } else {
-        setInventory(data);
+        // Skenario: Pilih kategori standar saja
+        query = query.in("category_name", actualCats);
       }
+    }
+
+    // --- FIX FILTER STATUS (Mapping Label ke Database Value) ---
+    if (activeFilter.status.length > 0) {
+      const statusMap: Record<string, string> = {
+        "Segera Kadaluwarsa": "expired",
+        "Mendekati Kedaluwarsa": "warning",
+        "Segar": "fresh"
+      };
+      
+      // Ubah ["Segera Kadaluwarsa"] menjadi ["expired"]
+      const mappedStatus = activeFilter.status.map(s => statusMap[s]);
+      query = query.in("freshness_status", mappedStatus);
+    }
+
+    // --- FIX SORTING ---
+    if (activeFilter.sortBy === "expiry") {
+      query = query.order("expiry_date", { ascending: true });
+    } else if (activeFilter.sortBy === "name_az") {
+      query = query.order("item_name", { ascending: true });
+    } else if (activeFilter.sortBy === "quantity") {
+      query = query.order("quantity", { ascending: false });
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    console.log("Data setelah filter:", data?.length, "item");
+    setInventory(data || []);
+
     } catch (error: any) {
-      console.error("Fetch Error:", error.message);
+      console.error("Filter Error:", error.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -83,7 +117,7 @@ const StokScreen: React.FC = () => {
 
   useEffect(() => {
     fetchInventory();
-  }, [session]);
+  }, [activeFilter, session]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -101,7 +135,9 @@ const StokScreen: React.FC = () => {
           quantity: parseFloat(bahan.jumlah),
           unit: bahan.satuan,
           is_natural: bahan.isNatural,
-          expiry_date: bahan.tanggalExpired 
+          expiry_date: bahan.tanggalExpired,
+          category_name: bahan.kategori // <--- TAMBAHKAN BARIS INI
+
         },
         { headers: { Authorization: `Bearer ${session.access_token}` } }
       );
@@ -124,16 +160,16 @@ const StokScreen: React.FC = () => {
 
   // --- LOGIKA PEMROSESAN DATA (GROUPING) ---
   const groupedInventory = useMemo(() => {
-    // 1. Filter berdasarkan pencarian
+    // 1. Filter pencarian
     const filtered = inventory.filter(item => 
       (item.item_name || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    // 2. Kelompokkan ke dalam objek berdasarkan kategori
     const groups: Record<string, InventoryItem[]> = {};
     
     filtered.forEach(item => {
-      const groupName = item.category_name || "Lain-lain";
+      // Jika category_name NULL di DB, masukkan ke grup "Lain-lain"
+      const groupName = item.category_name || "Lain-lain"; 
       if (!groups[groupName]) {
         groups[groupName] = [];
       }
@@ -145,10 +181,14 @@ const StokScreen: React.FC = () => {
 
   const getStatusDisplay = (status: string, days: number) => {
     switch (status) {
-      case "critical": return { label: "HARI INI", color: "#BB0009" };
-      case "warning": return { label: `${days} HARI LAGI`, color: "#FDCB52" };
-      case "fresh": return { label: "SEGAR", color: "#15803D" };
-      default: return { label: "CEK FISIK", color: "#949FA2" };
+      case "expired": // Ubah dari 'critical' ke 'expired' sesuai DB Anda
+        return { label: "EXPIRED", color: "#BB0009" };
+      case "warning": 
+        return { label: `${days} HARI LAGI`, color: "#FDCB52" };      
+      case "fresh": 
+        return { label: "SEGAR", color: "#15803D" };
+      default: 
+        return { label: "CEK FISIK", color: "#949FA2" };
     }
   };
 
@@ -198,7 +238,8 @@ const StokScreen: React.FC = () => {
           <View style={[styles.summaryCard, styles.summaryExpiring]}>
             <Text style={styles.summaryLabel}>SEGERA{"\n"}KADALUWARSA</Text>
             <Text style={styles.summaryNumber}>
-              {inventory.filter(i => i.freshness_status === 'critical' || i.freshness_status === 'warning').length}
+              {/* Hitung expired + warning */}
+              {inventory.filter(i => i.freshness_status === 'expired' || i.freshness_status === 'warning').length}
             </Text>
             <Text style={styles.summaryUnit}>item</Text>
           </View>
@@ -258,7 +299,16 @@ const StokScreen: React.FC = () => {
       </ScrollView>
 
       <TambahBahanModal visible={tambahVisible} onSave={handleSaveBahan} onClose={() => setTambahVisible(false)} />
-      <StokFilterModal visible={filterVisible} initialFilter={activeFilter} onApply={setActiveFilter} onClose={() => setFilterVisible(false)} />
+      <StokFilterModal
+        visible={filterVisible}
+        initialFilter={activeFilter}
+        onApply={(newFilter) => {
+          console.log("Filter baru diterima:", newFilter); // <-- CEK DI TERMINAL
+          setActiveFilter(newFilter);
+          setFilterVisible(false);
+        }}
+        onClose={() => setFilterVisible(false)}
+      />    
     </View>
   );
 };

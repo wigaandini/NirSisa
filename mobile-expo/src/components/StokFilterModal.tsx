@@ -23,8 +23,9 @@ export type KategoriStok =
   | "Produk Jadi dan Olahan"
   | "Daging & Telur"
   | "Bumbu & Rempah"
-  | "Minuman";
-export type StatusStok = "Segera Kadaluwarsa" | "Mendekati Kedaluwarsa" | "Segar";
+  | "Minuman"
+  | "Lain-lain";
+export type StatusStok = "expired" | "warning" | "fresh";
 
 export interface StokFilter {
   sortBy: SortStok | null;
@@ -51,12 +52,13 @@ const KATEGORI_OPTIONS: KategoriStok[] = [
   "Daging & Telur",
   "Bumbu & Rempah",
   "Minuman",
+  "Lain-lain",
 ];
 
-const STATUS_OPTIONS: StatusStok[] = [
-  "Segera Kadaluwarsa",
-  "Mendekati Kedaluwarsa",
-  "Segar",
+const STATUS_OPTIONS: { value: StatusStok; label: string }[] = [
+  { value: "expired", label: "Segera Kadaluwarsa" },
+  { value: "warning", label: "Mendekati Kedaluwarsa" },
+  { value: "fresh", label: "Segar" },
 ];
 
 interface StokFilterModalProps {
@@ -211,16 +213,21 @@ const StokFilterModal: React.FC<StokFilterModalProps> = ({
           <Text style={[styles.sectionLabel, { marginTop: 24 }]}>STATUS</Text>
           <View style={styles.chipRow}>
             {STATUS_OPTIONS.map((opt) => {
-              const selected = status.includes(opt);
+              const selected = status.includes(opt.value); // Cek berdasarkan value
               return (
                 <TouchableOpacity
-                  key={opt}
+                  key={opt.value}
                   style={[styles.chip, selected && styles.chipSelected]}
-                  onPress={() => toggleStatus(opt)}
+                  onPress={() => {
+                    // Logic toggle
+                    setStatus((prev) =>
+                      prev.includes(opt.value) ? prev.filter((s) => s !== opt.value) : [...prev, opt.value]
+                    );
+                  }}
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                    {opt}
+                    {opt.label} {/* Tampilkan label bahasa Indonesia */}
                   </Text>
                 </TouchableOpacity>
               );

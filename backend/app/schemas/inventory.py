@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+
+from pyparsing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -25,6 +27,8 @@ class InventoryItemUpdate(BaseModel):
     quantity: float | None = Field(default=None, gt=0)
     unit: str | None = Field(default=None, max_length=30)
     expiry_date: date | None = None
+    category_name: Optional[str] = None # <--- TAMBAHKAN INI
+
 
 
 # Output schemas

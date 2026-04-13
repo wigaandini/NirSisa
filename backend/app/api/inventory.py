@@ -58,11 +58,12 @@ async def add_item(
     user_id: str = Depends(get_current_user_id),
 ):
     """
-    Tambah bahan ke inventaris dengan verifikasi identitas user.
-    Nama bahan dinormalisasi otomatis menggunakan Sastrawi.
+    Tambah bahan ke inventaris. 
+    Mendukung input category_name dari HP untuk dikonversi ke category_id di backend.
     """
     sb = get_supabase()
 
+    # PERBAIKAN: Tambahkan parameter category_name agar dikonversi ke ID di service
     row = prepare_insert_row(
         user_id=user_id,
         item_name=item.item_name,
@@ -70,6 +71,7 @@ async def add_item(
         unit=item.unit,
         is_natural=item.is_natural,
         expiry_date=item.expiry_date,
+        category_name=item.category_name # <--- TERUSKAN DATA DARI FRONTEND
     )
 
     result = sb.table("inventory_stock").insert(row).execute()

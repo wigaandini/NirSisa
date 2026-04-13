@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,62 +7,111 @@ import {
   TouchableOpacity,
   Image,
   Platform,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { supabase } from "../services/supabase";
+import { useAuth } from "../context/AuthContext";
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
 interface HistoryItem {
   id: string;
-  date: string;
-  recipeName: string;
-  description: string;
+  cooked_at: string;
+  recipe_title: string;
+  ingredients_count: number;
 }
-
-const HISTORY: HistoryItem[] = [
-  {
-    id: "1",
-    date: "24 OKT 2023",
-    recipeName: "Orak-Arik Sayur Gurih",
-    description: "Menggunakan sawi hijau.",
-  },
-  {
-    id: "2",
-    date: "21 OKT 2023",
-    recipeName: "Rendang",
-    description: "Menggunakan daging.",
-  },
-  {
-    id: "3",
-    date: "18 OKT 2023",
-    recipeName: "Omelette",
-    description: "Menggunakan telur.",
-  },
-  {
-    id: "4",
-    date: "15 OKT 2023",
-    recipeName: "Sup Tomat & Basil",
-    description: "Menggunakan tomat dan basil.",
-  },
-  {
-    id: "5",
-    date: "12 OKT 2023",
-    recipeName: "Pasta Aglio Olio",
-    description: "Menggunakan bawang putih dan pasta.",
-  },
-];
 
 const RiwayatScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { session } = useAuth();
+  
+  // States
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [stats, setStats] = useState({ totalRecipes: 0, totalIngredients: 0 });
+
+  // Fungsi Fetch Data
+const fetchHistoryData = async () => {
+  if (!session?.user?.id) return;
+  
+  try {
+    const { data, error } = await supabase
+      .from("consumption_history")
+      .select(`
+        id,
+        recipe_title,
+        cooked_at,
+        consumption_history_items (id) 
+      `)
+      .eq("user_id", session.user.id)
+      .order("cooked_at", { ascending: false });
+
+    if (error) throw error;
+
+    // 1. Format data history
+    const formattedHistory = (data || []).map((item: any) => ({
+      id: item.id,
+      recipe_title: item.recipe_title,
+      cooked_at: item.cooked_at,
+      // Menghitung jumlah bahan per resep secara dinamis
+      ingredients_count: item.consumption_history_items?.length || 0
+    }));
+
+    // 2. HITUNG STATISTIK SECARA DINAMIS
+    // Menghitung total bahan dari seluruh resep yang pernah dimasak
+    const totalIngredientsUsed = formattedHistory.reduce(
+      (sum, item) => sum + item.ingredients_count, 
+      0
+    );
+
+    setHistory(formattedHistory);
+    setStats({
+      totalRecipes: formattedHistory.length,
+      totalIngredients: totalIngredientsUsed // <--- SEKARANG SUDAH DINAMIS
+    });
+
+  } catch (error: any) {
+    console.error("Fetch History Error:", error.message);
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
+
+  // Auto Refresh saat halaman dibuka
+  useFocusEffect(
+    useCallback(() => {
+      fetchHistoryData();
+    }, [session])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchHistoryData();
+  };
+
+  // Helper Format Tanggal
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const months = ["JAN", "FEB", "MAR", "APR", "MEI", "JUN", "JUL", "AGU", "SEP", "OKT", "NOV", "DES"];
+    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+  };
+
   return (
     <View style={styles.flex}>
       <ScrollView
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BB0009" />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
@@ -77,49 +126,53 @@ const RiwayatScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Stat Cards */}
+        {/* Stat Cards Dinamis */}
         <View style={styles.statRow}>
           <View style={[styles.statCard, styles.statCardBeige]}>
-            <Text style={[styles.statNumber, { color: "#92400E" }]}>24</Text>
+            <Text style={[styles.statNumber, { color: "#92400E" }]}>{stats.totalRecipes}</Text>
             <Text style={[styles.statLabel, { color: "#B45309" }]}>RESEP DIMASAK</Text>
           </View>
           <View style={[styles.statCard, styles.statCardPink]}>
-            <Text style={[styles.statNumber, { color: "#BB0009" }]}>52</Text>
+            <Text style={[styles.statNumber, { color: "#BB0009" }]}>{stats.totalIngredients}</Text>
             <Text style={[styles.statLabel, { color: "#BB0009" }]}>BAHAN DIMASAK</Text>
           </View>
         </View>
 
-        {/* Aktivitas Terbaru */}
         <Text style={styles.sectionTitle}>Aktivitas Terbaru</Text>
 
-        {/* Timeline */}
-        <View style={styles.timeline}>
-          {HISTORY.map((item, index) => {
-            const isLast = index === HISTORY.length - 1;
-            return (
-              <View key={item.id} style={styles.timelineRow}>
-                {/* Left: line + circle */}
-                <View style={styles.timelineLeft}>
-                  {/* Top line segment */}
-                  <View style={[styles.timelineLine, index === 0 && styles.timelineLineHidden]} />
-                  {/* Circle */}
-                  <View style={styles.timelineCircle}>
-                    <Ionicons name="close" size={16} color="#FFFFFF" />
+        {loading && !refreshing ? (
+          <ActivityIndicator size="large" color="#BB0009" style={{ marginTop: 20 }} />
+        ) : history.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="restaurant-outline" size={48} color="#BFD3D6" />
+            <Text style={styles.emptyText}>Belum ada riwayat memasak.</Text>
+          </View>
+        ) : (
+          <View style={styles.timeline}>
+            {history.map((item, index) => {
+              const isLast = index === history.length - 1;
+              return (
+                <View key={item.id} style={styles.timelineRow}>
+                  <View style={styles.timelineLeft}>
+                    <View style={[styles.timelineLine, index === 0 && styles.timelineLineHidden]} />
+                    <View style={styles.timelineCircle}>
+                      <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                    </View>
+                    <View style={[styles.timelineLine, isLast && styles.timelineLineHidden]} />
                   </View>
-                  {/* Bottom line segment */}
-                  <View style={[styles.timelineLine, isLast && styles.timelineLineHidden]} />
-                </View>
 
-                {/* Right: card */}
-                <View style={styles.timelineCard}>
-                  <Text style={styles.cardDate}>{item.date}</Text>
-                  <Text style={styles.cardName}>{item.recipeName}</Text>
-                  <Text style={styles.cardDesc}>{item.description}</Text>
+                  <View style={styles.timelineCard}>
+                    <Text style={styles.cardDate}>{formatDate(item.cooked_at)}</Text>
+                    <Text style={styles.cardName}>{item.recipe_title}</Text>
+                    <Text style={styles.cardDesc}>
+                      Berhasil mengolah {item.ingredients_count} bahan makanan.
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        )}
 
         <View style={{ height: 24 }} />
       </ScrollView>
@@ -254,6 +307,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#656C6E",
   },
+  emptyState: { alignItems: 'center', marginTop: 40, gap: 10 },
+  emptyText: { fontFamily: 'Inter_400Regular', color: '#949FA2', fontSize: 15 }
 });
 
 export default RiwayatScreen;

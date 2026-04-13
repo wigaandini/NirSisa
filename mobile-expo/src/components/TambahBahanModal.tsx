@@ -22,11 +22,18 @@ const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
 const KATEGORI_OPTIONS = [
   "Sayuran",
   "Buah-Buahan",
-  "Daging & Telur",
+  "Daging Sapi",
+  "Daging Ayam",
+  "Ikan",
+  "Udang",
+  "Telur",
+  "Tahu",
+  "Tempe",
+  "Susu & Olahan",
   "Produk Jadi",
-  "Bumbu & Rempah",
-  "Minuman",
-  "Lainnya",
+  "Bumbu Segar",
+  "Tepung",
+  "Lainnya"
 ];
 
 // 1. UPDATE INTERFACE agar sesuai dengan kebutuhan StokScreen & Backend
