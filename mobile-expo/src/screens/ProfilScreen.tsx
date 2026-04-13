@@ -491,16 +491,31 @@ const ProfilScreen: React.FC = () => {
   }, [session]);
 
   const handleSaveName = async () => {
-    if (!session) return;
+    if (!session?.user?.id) return;
+    if (!profileName.trim()) {
+      Alert.alert("Peringatan", "Nama tidak boleh kosong");
+      return;
+    }
+
     setSaving(true);
-    const { error } = await supabase
-      .from("profiles")
-      .upsert({ id: session.user.id, display_name: profileName });
-    setSaving(false);
-    if (error) {
-      Alert.alert("Gagal", error.message);
-    } else {
-      Alert.alert("Berhasil", "Profil diperbarui");
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .upsert({ 
+          id: session.user.id, 
+          display_name: profileName.trim(),
+          updated_at: new Date().toISOString(), // Bagus untuk tracking di DB
+        }, {
+          onConflict: 'id' // Memberitahu Supabase untuk update jika ID bentrok
+        });
+
+      if (error) throw error;
+      Alert.alert("Berhasil", "Nama lengkap berhasil diperbarui");
+    } catch (error: any) {
+      console.error("Update Profile Error:", error.message);
+      Alert.alert("Gagal", `Tidak dapat menyimpan perubahan: ${error.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 

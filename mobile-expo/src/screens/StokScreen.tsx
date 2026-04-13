@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,9 @@ import {
   TextInput,
   Image,
   Platform,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import TambahBahanModal, { BahanBaru } from "../components/TambahBahanModal";
@@ -15,63 +18,138 @@ import StokFilterModal, { DEFAULT_STOK_FILTER, StokFilter } from "../components/
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { supabase } from "../services/supabase";
+import { useAuth } from "../context/AuthContext";
+import axios from "axios";
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
+const API_URL = "https://nirsisa-production.up.railway.app";
 
-type FreshnessStatus = "HARI INI" | "2 HARI LAGI" | "SEGAR";
-
-interface StockItem {
+interface InventoryItem {
   id: string;
-  name: string;
-  qty: string;
-  status: FreshnessStatus;
-  borderColor: string;
+  item_name: string;
+  quantity: number;
+  unit: string;
+  category_name: string | null;
+  freshness_status: "critical" | "warning" | "fresh" | "unknown";
+  days_remaining: number;
 }
-
-interface StockCategory {
-  title: string;
-  items: StockItem[];
-}
-
-const STATUS_STYLES: Record<FreshnessStatus, { bg: string; text: string }> = {
-  "HARI INI": { bg: "#BB0009", text: "#FFFFFF" },
-  "2 HARI LAGI": { bg: "#FDCB52", text: "#FFFFFF" },
-  "SEGAR": { bg: "#15803D", text: "#FFFFFF" },
-};
-
-const STOCK_DATA: StockCategory[] = [
-  {
-    title: "Sayuran",
-    items: [
-      { id: "1", name: "Bayam Hijau", qty: "3 Ikat", status: "HARI INI", borderColor: "#BB0009" },
-      { id: "2", name: "Wortel", qty: "500 gr", status: "2 HARI LAGI", borderColor: "#E8A317" },
-      { id: "3", name: "Kubis", qty: "1 buah", status: "SEGAR", borderColor: "#15803D" },
-    ],
-  },
-  {
-    title: "Daging & Telur",
-    items: [
-      { id: "4", name: "Dada Ayam", qty: "1 kg", status: "HARI INI", borderColor: "#BB0009" },
-      { id: "5", name: "Telur Ayam", qty: "10 butir", status: "SEGAR", borderColor: "#15803D" },
-    ],
-  },
-];
 
 const StokScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { session } = useAuth();
+  
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [tambahVisible, setTambahVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [activeFilter, setActiveFilter] = useState<StokFilter>(DEFAULT_STOK_FILTER);
 
-  const filterActive =
-    activeFilter.sortBy !== null ||
-    activeFilter.kategori.length > 0 ||
-    activeFilter.status.length > 0;
+  const fetchInventory = async () => {
+    if (!session?.user?.id) return;
+    setLoading(true);
+    try {
+      // 1. Coba ambil dari VIEW
+      const { data, error } = await supabase
+        .from("inventory_with_spi")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .gt("quantity", 0)
+        .order("expiry_date", { ascending: true });
 
-  const handleSaveBahan = (bahan: BahanBaru) => {
-    // TODO: integrate with backend / state management
-    console.log("Bahan baru:", bahan);
+      // 2. Logika Fallback jika View bermasalah atau kosong
+      if (error || !data || data.length === 0) {
+        const { data: rawData, error: rawError } = await supabase
+          .from("inventory_stock")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .gt("quantity", 0)
+          .order("expiry_date", { ascending: true });
+
+        if (rawError) throw rawError;
+        setInventory(rawData || []);
+      } else {
+        setInventory(data);
+      }
+    } catch (error: any) {
+      console.error("Fetch Error:", error.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+  }, [session]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchInventory();
+  }, [session]);
+
+  const handleSaveBahan = async (bahan: BahanBaru) => {
+    if (!session?.access_token) return;
+    try {
+      setLoading(true);
+      const response = await axios.post(
+        `${API_URL}/inventory`,
+        {
+          item_name: bahan.nama,
+          quantity: parseFloat(bahan.jumlah),
+          unit: bahan.satuan,
+          is_natural: bahan.isNatural,
+          expiry_date: bahan.tanggalExpired 
+        },
+        { headers: { Authorization: `Bearer ${session.access_token}` } }
+      );
+
+      if (response.status === 201) {
+        Alert.alert("Berhasil", "Bahan ditambahkan.");
+        setTambahVisible(false);
+        fetchInventory();
+      }
+    } catch (error: any) {
+      // --- UBAH BAGIAN INI UNTUK DEBUGGING ---
+      const serverMessage = error.response?.data?.detail || error.message;
+      console.error("Server Error Detail:", serverMessage);
+      Alert.alert("Gagal Menyambung", `Pesan Server: ${serverMessage}`);
+      // ---------------------------------------
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- LOGIKA PEMROSESAN DATA (GROUPING) ---
+  const groupedInventory = useMemo(() => {
+    // 1. Filter berdasarkan pencarian
+    const filtered = inventory.filter(item => 
+      (item.item_name || "").toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    // 2. Kelompokkan ke dalam objek berdasarkan kategori
+    const groups: Record<string, InventoryItem[]> = {};
+    
+    filtered.forEach(item => {
+      const groupName = item.category_name || "Lain-lain";
+      if (!groups[groupName]) {
+        groups[groupName] = [];
+      }
+      groups[groupName].push(item);
+    });
+
+    return groups;
+  }, [inventory, searchQuery]);
+
+  const getStatusDisplay = (status: string, days: number) => {
+    switch (status) {
+      case "critical": return { label: "HARI INI", color: "#BB0009" };
+      case "warning": return { label: `${days} HARI LAGI`, color: "#FDCB52" };
+      case "fresh": return { label: "SEGAR", color: "#15803D" };
+      default: return { label: "CEK FISIK", color: "#949FA2" };
+    }
   };
 
   return (
@@ -80,12 +158,13 @@ const StokScreen: React.FC = () => {
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BB0009" />}
       >
         {/* Header */}
         <View style={styles.header}>
           <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifButton} onPress={() => navigation.navigate("Notification")}>
+            <TouchableOpacity style={styles.notifButton}>
               <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
             </TouchableOpacity>
             <View style={styles.avatar}>
@@ -94,27 +173,22 @@ const StokScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Search Bar */}
+        {/* Search */}
         <View style={styles.searchRow}>
           <View style={styles.searchBar}>
             <Ionicons name="search-outline" size={18} color="#949FA2" />
             <TextInput
               style={styles.searchInput}
               placeholder="Cari bahan makanan..."
-              placeholderTextColor="#BFD3D6"
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
           </View>
-          <TouchableOpacity
-            style={[styles.filterButton, filterActive && styles.filterButtonActive]}
-            onPress={() => setFilterVisible(true)}
-          >
-            <Ionicons name="options-outline" size={22} color={filterActive ? "#FFFFFF" : "#2B2B2B"} />
+          <TouchableOpacity style={styles.filterButton} onPress={() => setFilterVisible(true)}>
+            <Ionicons name="options-outline" size={22} color="#2B2B2B" />
           </TouchableOpacity>
         </View>
 
-        {/* Add Stock Button */}
         <TouchableOpacity style={styles.addButton} onPress={() => setTambahVisible(true)}>
           <Text style={styles.addButtonText}>Tambah Stok Bahan</Text>
         </TouchableOpacity>
@@ -123,81 +197,68 @@ const StokScreen: React.FC = () => {
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, styles.summaryExpiring]}>
             <Text style={styles.summaryLabel}>SEGERA{"\n"}KADALUWARSA</Text>
-            <Text style={styles.summaryNumber}>12</Text>
+            <Text style={styles.summaryNumber}>
+              {inventory.filter(i => i.freshness_status === 'critical' || i.freshness_status === 'warning').length}
+            </Text>
             <Text style={styles.summaryUnit}>item</Text>
           </View>
           <View style={[styles.summaryCard, styles.summaryFresh]}>
-            <Text style={[styles.summaryLabel, { color: "#15803D" }]}>
-              MASIH{"\n"}SEGAR
+            <Text style={[styles.summaryLabel, { color: "#15803D" }]}>MASIH{"\n"}SEGAR</Text>
+            <Text style={[styles.summaryNumber, { color: "#15803D" }]}>
+              {inventory.filter(i => i.freshness_status === 'fresh').length}
             </Text>
-            <Text style={[styles.summaryNumber, { color: "#15803D" }]}>48</Text>
             <Text style={[styles.summaryUnit, { color: "#15803D" }]}>item</Text>
           </View>
         </View>
 
-        {/* Stock Categories */}
-        {STOCK_DATA.map((category) => (
-          <View key={category.title} style={styles.categorySection}>
-            <View style={styles.categoryHeader}>
-              <Text style={styles.categoryTitle}>{category.title}</Text>
-              <View style={styles.categoryBadge}>
-                <Text style={styles.categoryBadgeText}>
-                  {category.items.length} Bahan
-                </Text>
+        {/* Render List Berdasarkan Group */}
+        {loading && !refreshing ? (
+          <ActivityIndicator size="large" color="#BB0009" style={{ marginTop: 20 }} />
+        ) : (
+          Object.keys(groupedInventory).map((categoryName) => (
+            <View key={categoryName} style={styles.categorySection}>
+              <View style={styles.categoryHeader}>
+                <Text style={styles.categoryTitle}>{categoryName}</Text>
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryBadgeText}>
+                    {groupedInventory[categoryName].length} Bahan
+                  </Text>
+                </View>
               </View>
+
+              {groupedInventory[categoryName].map((item) => {
+                const statusInfo = getStatusDisplay(item.freshness_status, item.days_remaining);
+                return (
+                  <TouchableOpacity key={item.id} style={styles.stockCard}>
+                    <View style={[styles.stockCardBorder, { backgroundColor: statusInfo.color }]} />
+                    <View style={styles.stockCardContent}>
+                      <View style={styles.stockCardInfo}>
+                        <Text style={styles.stockItemName}>{item.item_name}</Text>
+                        <Text style={styles.stockItemQty}>{item.quantity} {item.unit}</Text>
+                      </View>
+                      <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
+                        <Text style={styles.statusBadgeText}>{statusInfo.label}</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-
-            {category.items.map((item) => {
-              const statusStyle = STATUS_STYLES[item.status];
-              return (
-                <TouchableOpacity key={item.id} style={styles.stockCard}>
-                  <View
-                    style={[
-                      styles.stockCardBorder,
-                      { backgroundColor: item.borderColor },
-                    ]}
-                  />
-                  <View style={styles.stockCardContent}>
-                    <View style={styles.stockCardInfo}>
-                      <Text style={styles.stockItemName}>{item.name}</Text>
-                      <Text style={styles.stockItemQty}>{item.qty}</Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        { backgroundColor: statusStyle.bg },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusBadgeText,
-                          { color: statusStyle.text },
-                        ]}
-                      >
-                        {item.status}
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+          ))
+        )}
+        
+        {/* State Kosong */}
+        {!loading && inventory.length === 0 && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>Belum ada bahan di stok Anda.</Text>
           </View>
-        ))}
+        )}
 
-        <View style={{ height: 24 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      <TambahBahanModal
-        visible={tambahVisible}
-        onSave={handleSaveBahan}
-        onClose={() => setTambahVisible(false)}
-      />
-      <StokFilterModal
-        visible={filterVisible}
-        initialFilter={activeFilter}
-        onApply={setActiveFilter}
-        onClose={() => setFilterVisible(false)}
-      />
+      <TambahBahanModal visible={tambahVisible} onSave={handleSaveBahan} onClose={() => setTambahVisible(false)} />
+      <StokFilterModal visible={filterVisible} initialFilter={activeFilter} onApply={setActiveFilter} onClose={() => setFilterVisible(false)} />
     </View>
   );
 };
@@ -396,6 +457,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.3,
   },
+  emptyState: { alignItems: 'center', marginTop: 40 },
+  emptyText: { color: '#949FA2' }
 });
 
 export default StokScreen;

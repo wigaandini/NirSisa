@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -7,48 +7,161 @@ import {
   TouchableOpacity,
   Image,
   Platform,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { supabase } from "../services/supabase"; // Import client supabase Anda
+import axios from "axios";
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
-const EXPIRING_ITEMS = [
-  { id: "1", name: "Daging Sapi", qty: "250g", badge: "HARI INI", badgeColor: "#BB0009" },
-  { id: "2", name: "Tahu", qty: "100g", badge: "2 HARI LAGI", badgeColor: "#FDCB52" },
-  { id: "3", name: "Alpukat", qty: "4 buah", badge: "3 HARI LAGI", badgeColor: "#FDCB52" },
-];
+// URL Backend FastAPI Anda (Gunakan IP Lokal, jangan localhost jika tes di HP asli)
+const API_URL = "https://nirsisa-production.up.railway.app";
 
-const RECIPES = [
-  {
-    id: "1",
-    tag: "MENGGUNAKAN DAGING SAPI",
-    name: "Bakso Sapi",
-    steps: 5,
-    ingredients: 4,
-    likes: 120,
-  },
-  {
-    id: "2",
-    tag: "MENGGUNAKAN TAHU DAN DAUN SELEDRI",
-    name: "Perkedel Tahu",
-    steps: 4,
-    ingredients: 5,
-    likes: 85,
-  },
-];
+interface InventoryItem {
+  id: string;
+  item_name: string;
+  quantity: number;
+  unit: string;
+  days_remaining: number;
+  freshness_status: 'fresh' | 'warning' | 'critical';
+}
+
+interface Recipe {
+  index: number;
+  title: string;
+  total_steps: number;
+  total_ingredients: number;
+  loves: number;
+}
 
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  
+  // States
+  const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState("User");
+  const [expiringItems, setExpiringItems] = useState<InventoryItem[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [totalStock, setTotalStock] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
+
+  const fetchInitialData = async () => {
+    setLoading(true);
+    try {
+      // 1. Ambil User Auth
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        console.log("LOGGED IN USER ID:", user.id); 
+      }
+      if (!user) return;
+
+      // 2. Ambil User Profile (Gunakan Promise.all agar lebih cepat)
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("id", user.id)
+        .single();
+      if (profile) setUserName(profile.display_name);
+
+      // 3. Ambil Total Count Stok terlebih dahulu
+      const { count } = await supabase
+        .from("inventory_stock")
+        .select("*", { count: 'exact', head: true })
+        .eq("user_id", user.id)
+        .gt("quantity", 0);
+      
+      const currentTotal = count || 0;
+      setTotalStock(currentTotal);
+
+      // 4. Ambil Stok (3 teratas untuk list expiry)
+      const { data: stock } = await supabase
+        .from("inventory_stock")
+        .select("*")
+        .eq("user_id", user.id)
+        .gt("quantity", 0)
+        .order("expiry_date", { ascending: true })
+        .limit(3);
+
+      const processedStock = (stock || []).map(item => {
+        const diff = new Date(item.expiry_date).getTime() - new Date().getTime();
+        const days = Math.ceil(diff / (1000 * 3600 * 24));
+        return {
+          ...item,
+          days_remaining: days,
+          freshness_status: days <= 2 ? 'critical' : days <= 5 ? 'warning' : 'fresh'
+        };
+      });
+      setExpiringItems(processedStock);
+
+      // 5. Ambil Rekomendasi AI (Hanya jika stok ada)
+      if (currentTotal > 0) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+        try {
+            const res = await axios.get(`${API_URL}/recommend?top_k=2`, {
+              headers: { Authorization: `Bearer ${session.access_token}` }
+            });
+            setRecipes(res.data.recommendations || []);
+          } catch (apiError: any) { // Tambahkan : any di sini
+            console.log("AI Recommendation log:", apiError?.message);
+            setRecipes([]); 
+          }
+        }
+      } else {
+        // Pastikan resep kosong jika stok 0
+        setRecipes([]);
+      }
+
+    } catch (error: any) {
+      // Tangani error fatal saja (misal masalah koneksi database utama)
+      console.error("Fatal Fetch Error:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const getBadgeInfo = (days: number) => {
+    if (days <= 0) return { label: "EXPIRED", color: "#BB0009" };
+    if (days === 1) return { label: "BESOK", color: "#BB0009" };
+    return { label: `${days} HARI LAGI`, color: days <= 2 ? "#BB0009" : "#FDCB52" };
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.flex, { justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color="#BB0009" />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.flex}>
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+        <View style={styles.flex}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchInitialData();
+              }} 
+              tintColor="#BB0009" 
+            />
+          }
+        >
         {/* Header */}
         <View style={styles.header}>
           <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
@@ -62,42 +175,29 @@ const HomeScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Greeting */}
-        <Text style={styles.greeting}>Halo, Clement!</Text>
+        <Text style={styles.greeting}>Halo, {userName.split(' ')[0]}!</Text>
         <Text style={styles.greetingSub}>
-          Kamu punya 3 bahan yang harus kamu perhatikan minggu ini.
+          Kamu punya {expiringItems.length} bahan yang harus kamu perhatikan minggu ini.
         </Text>
 
         {/* Segera Kedaluwarsa */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Segera Kedaluwarsa</Text>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate("Main", { screen: "Stok" })}>
             <Text style={styles.seeAll}>LIHAT SEMUA</Text>
           </TouchableOpacity>
         </View>
 
-        {EXPIRING_ITEMS.map((item) => {
-          const isWarning = item.badge === "2 HARI LAGI" || item.badge === "3 HARI LAGI";
-
+        {expiringItems.map((item) => {
+          const badge = getBadgeInfo(item.days_remaining);
           return (
-            <TouchableOpacity
-              key={item.id}
-              style={[
-                styles.expiryCard,
-                isWarning && {
-                  backgroundColor: "#FFF7ED",
-                  borderColor: "#FFEDD5",
-                },
-              ]}
-            >
-              <View
-                style={[styles.expiryBadge, { backgroundColor: item.badgeColor }]}
-              >
-                <Text style={styles.expiryBadgeText}>{item.badge}</Text>
+            <TouchableOpacity key={item.id} style={styles.expiryCard}>
+              <View style={[styles.expiryBadge, { backgroundColor: badge.color }]}>
+                <Text style={styles.expiryBadgeText}>{badge.label}</Text>
               </View>
               <View style={styles.expiryInfo}>
-                <Text style={styles.expiryName}>{item.name}</Text>
-                <Text style={styles.expiryQty}>{item.qty}</Text>
+                <Text style={styles.expiryName}>{item.item_name}</Text>
+                <Text style={styles.expiryQty}>{item.quantity} {item.unit}</Text>
               </View>
             </TouchableOpacity>
           );
@@ -111,22 +211,22 @@ const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {RECIPES.map((recipe) => (
-          <TouchableOpacity key={recipe.id} style={styles.recipeCard}>
-            <Text style={styles.recipeTag}>{recipe.tag}</Text>
-            <Text style={styles.recipeName}>{recipe.name}</Text>
+        {recipes.map((recipe) => (
+          <TouchableOpacity key={recipe.index} style={styles.recipeCard}>
+            <Text style={styles.recipeTag}>REKOMENDASI UNTUKMU</Text>
+            <Text style={styles.recipeName}>{recipe.title}</Text>
             <View style={styles.recipeMeta}>
               <View style={styles.recipeMetaItem}>
                 <Ionicons name="list-outline" size={14} color="#656C6E" />
-                <Text style={styles.recipeMetaText}>{recipe.steps} Tahap</Text>
+                <Text style={styles.recipeMetaText}>{recipe.total_steps} Tahap</Text>
               </View>
               <View style={styles.recipeMetaItem}>
                 <Ionicons name="cube-outline" size={14} color="#656C6E" />
-                <Text style={styles.recipeMetaText}>{recipe.ingredients} Bahan</Text>
+                <Text style={styles.recipeMetaText}>{recipe.total_ingredients} Bahan</Text>
               </View>
               <View style={styles.recipeMetaItem}>
                 <Ionicons name="heart" size={14} color="#BB0009" />
-                <Text style={styles.recipeMetaText}>{recipe.likes} Suka</Text>
+                <Text style={styles.recipeMetaText}>{recipe.loves} Suka</Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -135,7 +235,7 @@ const HomeScreen: React.FC = () => {
         {/* Active Stock Banner */}
         <View style={styles.stockBanner}>
           <Ionicons name="file-tray-full-outline" size={24} color="#FFFFFF" />
-          <Text style={styles.stockBannerNumber}>42</Text>
+          <Text style={styles.stockBannerNumber}>{totalStock}</Text>
           <Text style={styles.stockBannerLabel}>BAHAN AKTIF DI STOK</Text>
         </View>
 
