@@ -1,5 +1,6 @@
 import React from "react";
-import { View, StyleSheet, Platform } from "react-native";
+import { View, StyleSheet, Platform, ActivityIndicator } from "react-native";
+import { useAuth } from "../context/AuthContext";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
@@ -102,20 +103,40 @@ const MainTabs: React.FC = () => {
 };
 
 const AppNavigator: React.FC = () => {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#BB0009" />
+      </View>
+    );
+  }
+
   return (
-    <Stack.Navigator
-      initialRouteName="Login"
-      screenOptions={{ headerShown: false }}
-    >
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="SignUp" component={SignUpScreen} />
-      <Stack.Screen name="Main" component={MainTabs} />
-      <Stack.Screen name="Notification" component={NotificationScreen} />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {session ? (
+        <>
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="Notification" component={NotificationScreen} />
+        </>
+      ) : (
+        <>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="SignUp" component={SignUpScreen} />
+        </>
+      )}
     </Stack.Navigator>
   );
 };
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FAFAFA",
+  },
   tabBar: {
     backgroundColor: "#FFFFFF",
     borderTopWidth: 1,

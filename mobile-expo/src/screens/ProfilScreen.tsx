@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,12 +13,16 @@ import {
   TouchableWithoutFeedback,
   Platform,
   KeyboardAvoidingView,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { supabase } from "../services/supabase";
+import { useAuth } from "../context/AuthContext";
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -40,6 +44,31 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSavePassword = async () => {
+    if (!newPassword || !confirmPassword) {
+      Alert.alert("Error", "Kata sandi baru harus diisi");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert("Error", "Konfirmasi kata sandi tidak cocok");
+      return;
+    }
+    if (newPassword.length < 6) {
+      Alert.alert("Error", "Kata sandi minimal 6 karakter");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setSaving(false);
+    if (error) {
+      Alert.alert("Gagal", error.message);
+    } else {
+      Alert.alert("Berhasil", "Kata sandi berhasil diperbarui");
+      handleClose();
+    }
+  };
 
   React.useEffect(() => {
     if (visible) {
@@ -157,8 +186,12 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
           </View>
 
           {/* Actions */}
-          <TouchableOpacity style={modalStyles.saveButton} activeOpacity={0.85}>
-            <Text style={modalStyles.saveButtonText}>Simpan Perubahan</Text>
+          <TouchableOpacity style={modalStyles.saveButton} activeOpacity={0.85} onPress={handleSavePassword} disabled={saving}>
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={modalStyles.saveButtonText}>Simpan Perubahan</Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity style={modalStyles.cancelButton} onPress={handleClose}>
@@ -431,11 +464,52 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, name, emai
 // ── Main Screen ────────────────────────────────────────────────
 const ProfilScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { session, signOut } = useAuth();
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const [editProfileVisible, setEditProfileVisible] = useState(false);
   const [gantiFotoVisible, setGantiFotoVisible] = useState(false);
-  const [profileName, setProfileName] = useState("Budi Akbar");
-  const [profileEmail, setProfileEmail] = useState("budi@example.com");
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!session) return;
+    setProfileEmail(session.user.email ?? "");
+    supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", session.user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.display_name) {
+          setProfileName(data.display_name);
+        } else {
+          const metaName = session.user.user_metadata?.display_name ?? "";
+          setProfileName(metaName);
+        }
+      });
+  }, [session]);
+
+  const handleSaveName = async () => {
+    if (!session) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("profiles")
+      .upsert({ id: session.user.id, display_name: profileName });
+    setSaving(false);
+    if (error) {
+      Alert.alert("Gagal", error.message);
+    } else {
+      Alert.alert("Berhasil", "Profil diperbarui");
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert("Keluar Akun", "Apakah Anda yakin ingin keluar?", [
+      { text: "Batal", style: "cancel" },
+      { text: "Keluar", style: "destructive", onPress: signOut },
+    ]);
+  };
 
   return (
     <View style={styles.flex}>
@@ -504,7 +578,9 @@ const ProfilScreen: React.FC = () => {
             value={profileName}
             onChangeText={setProfileName}
             placeholderTextColor="#BFD3D6"
+            onEndEditing={handleSaveName}
           />
+          {saving && <ActivityIndicator size="small" color="#BB0009" />}
         </View>
 
         <Text style={styles.fieldLabel}>EMAIL</Text>
@@ -513,7 +589,7 @@ const ProfilScreen: React.FC = () => {
           <TextInput
             style={styles.input}
             value={profileEmail}
-            onChangeText={setProfileEmail}
+            editable={false}
             placeholderTextColor="#BFD3D6"
             keyboardType="email-address"
           />
@@ -531,7 +607,7 @@ const ProfilScreen: React.FC = () => {
         </TouchableOpacity>
 
         {/* Keluar Akun */}
-        <TouchableOpacity style={styles.logoutButton} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.logoutButton} activeOpacity={0.8} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color="#BB0009" />
           <Text style={styles.logoutText}>Keluar Akun</Text>
         </TouchableOpacity>

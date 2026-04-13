@@ -9,8 +9,15 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { supabase } from "../services/supabase";
+import * as WebBrowser from "expo-web-browser";
+import * as AuthSession from "expo-auth-session";
+
+WebBrowser.maybeCompleteAuthSession();
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
@@ -22,15 +29,45 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-    // TODO: integrate with backend auth
-    navigation.replace("Main");
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Email dan kata sandi harus diisi");
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (error) {
+      Alert.alert("Login Gagal", error.message);
+    }
   };
 
-  const handleGoogleLogin = () => {
-    // TODO: integrate Google OAuth
-    navigation.replace("Main");
+  const handleGoogleLogin = async () => {
+    const redirectUrl = AuthSession.makeRedirectUri({ scheme: "nirsisa" });
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+    });
+
+    if (error || !data.url) {
+      Alert.alert("Error", error?.message ?? "Gagal membuka Google login");
+      return;
+    }
+
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+
+    if (result.type === "success" && result.url) {
+      const hash = result.url.split("#")[1] ?? "";
+      const params = new URLSearchParams(hash);
+      const access_token = params.get("access_token");
+      const refresh_token = params.get("refresh_token");
+      if (access_token && refresh_token) {
+        await supabase.auth.setSession({ access_token, refresh_token });
+      }
+    }
   };
 
   return (
@@ -114,9 +151,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           </TouchableOpacity>
 
           {/* Login Button */}
-          <TouchableOpacity style={styles.primaryButton} onPress={handleLogin}>
-            <Text style={styles.primaryButtonText}>Masuk</Text>
-            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+          <TouchableOpacity style={styles.primaryButton} onPress={handleLogin} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Text style={styles.primaryButtonText}>Masuk</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </>
+            )}
           </TouchableOpacity>
 
           {/* Divider */}

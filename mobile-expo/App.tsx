@@ -9,6 +9,7 @@ import {
 } from "@expo-google-fonts/inter";
 import SplashScreen from "./src/screens/SplashScreen";
 import AppNavigator from "./src/navigation/AppNavigator";
+import { AuthProvider } from "./src/context/AuthContext";
 
 const App: React.FC = () => {
   const [isSplashDone, setIsSplashDone] = useState(false);
@@ -38,9 +39,11 @@ const App: React.FC = () => {
   }
 
   return (
-    <NavigationContainer>
-      <AppNavigator />
-    </NavigationContainer>
+    <AuthProvider>
+      <NavigationContainer>
+        <AppNavigator />
+      </NavigationContainer>
+    </AuthProvider>
   );
 };
 
