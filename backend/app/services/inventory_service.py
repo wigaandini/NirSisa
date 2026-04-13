@@ -43,26 +43,28 @@ def enrich_inventory_item(item: dict[str, Any]) -> dict[str, Any]:
 def get_category_id_from_name(name: str) -> Optional[int]:
     # Mapping dari Label UI (Frontend) ke ID Database (berdasarkan screenshot Anda)
     mapping = {
-        "Sayuran": 1,           # sayur
-        "Buah-Buahan": 2,       # buah
-        "Daging Sapi": 3,       # daging_sapi
-        "Daging Ayam": 4,       # daging_ayam
-        "Daging Kambing": 5,    # daging_kambing
-        "Ikan": 6,              # ikan_segar
-        "Udang": 7,             # udang
-        "Telur": 8,             # telur
-        "Tahu": 9,              # tahu
-        "Tempe": 10,            # tempe
-        "Susu & Olahan": 11,    # dairy
-        "Bumbu Segar": 12,      # bumbu_segar
-        "Bumbu Kering": 13,     # bumbu_kering
-        "Produk Jadi": 14,      # bahan_olahan
-        "Minyak & Lemak": 15,   # minyak_lemak
-        "Tepung": 16,           # tepung_kering
-        "Kacang-kacangan": 17,  # kacang_biji
-        "Roti & Bakery": 18,    # roti_bakery
+        "sayuran": 1,           # sayur
+        "buah-Buahan": 2,       # buah
+        "daging Sapi": 3,       # daging_sapi
+        "daging Ayam": 4,       # daging_ayam
+        "daging Kambing": 5,    # daging_kambing
+        "ikan": 6,              # ikan_segar
+        "udang": 7,             # udang
+        "telur": 8,             # telur
+        "tahu": 9,              # tahu
+        "tempe": 10,            # tempe
+        "susu & Olahan": 11,    # dairy
+        "bumbu Segar": 12,      # bumbu_segar
+        "bumbu Kering": 13,     # bumbu_kering
+        "produk Jadi": 14,      # bahan_olahan
+        "minyak & Lemak": 15,   # minyak_lemak
+        "tepung": 16,           # tepung_kering
+        "kacang-kacangan": 17,  # kacang_biji
+        "roti & Bakery": 18,    # roti_bakery
     }
-    return mapping.get(name)
+    if not name: return None
+    # .lower() akan mengubah "Sayuran" atau "SAYURAN" menjadi "sayuran"
+    return mapping.get(name.lower())
 
 
 def prepare_insert_row(
