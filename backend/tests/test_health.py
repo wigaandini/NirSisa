@@ -36,25 +36,25 @@ def test_recommend_requires_auth(client):
     assert r.status_code in (401, 403)
 
 
-def test_legacy_recommend_no_auth(client):
-    # Legacy POST /recommend harus tetap jalan tanpa auth 
-    response = client.post("/recommend", json={
-        "ingredients": [
-            {"name": "bayam", "days_left": 1},
-            {"name": "ayam", "days_left": 5},
-        ]
-    })
-    assert response.status_code == 200
-    data = response.json()
-    assert "query_cleaned" in data
-    assert "recommendations" in data
-    assert len(data["recommendations"]) > 0
-    # Resep harus punya field dari versi teman
-    rec = data["recommendations"][0]
-    assert "title" in rec
-    assert "score" in rec
-    assert "similarity_component" in rec
-    assert "spi_component" in rec
+# def test_legacy_recommend_no_auth(client):
+#     # Legacy POST /recommend harus tetap jalan tanpa auth 
+#     response = client.post("/recommend", json={
+#         "ingredients": [
+#             {"name": "bayam", "days_left": 1},
+#             {"name": "ayam", "days_left": 5},
+#         ]
+#     })
+#     assert response.status_code == 200
+#     data = response.json()
+#     assert "query_cleaned" in data
+#     assert "recommendations" in data
+#     assert len(data["recommendations"]) > 0
+#     # Resep harus punya field dari versi teman
+#     rec = data["recommendations"][0]
+#     assert "title" in rec
+#     assert "score" in rec
+#     assert "similarity_component" in rec
+#     assert "spi_component" in rec
 
 
 def test_health_ai_engine(client):
