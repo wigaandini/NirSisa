@@ -11,7 +11,6 @@ import logging
 from datetime import date, datetime
 from typing import Any, Optional
 
-
 from app.core.supabase import get_supabase
 from app.services.normalizer import (
     normalize_ingredient_name,
@@ -26,7 +25,6 @@ logger = logging.getLogger(__name__)
 # Inventory CRUD helpers
 
 def enrich_inventory_item(item: dict[str, Any]) -> dict[str, Any]:
-    # Tambahkan field kalkulasi: days_remaining, spi_score, freshness_status
     expiry = item.get("expiry_date")
     if expiry and isinstance(expiry, str):
         expiry = date.fromisoformat(expiry)
@@ -42,7 +40,6 @@ def enrich_inventory_item(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_category_id_from_name(name: str) -> Optional[int]:
-    # Mapping dari Label UI (Frontend) ke ID Database
     mapping = {
         "sayuran": 1,
         "buah-Buahan": 2,
@@ -77,7 +74,6 @@ def prepare_insert_row(
     expiry_date: date | None,
     category_name: Optional[str] = None,
 ) -> dict[str, Any]:
-
     normalized = normalize_ingredient_name(item_name)
     if not normalized:
         normalized = item_name.strip().lower()
@@ -120,6 +116,31 @@ def prepare_insert_row(
 # Inventory Reconciliation (pengurangan stok setelah masak)
 # ============================================================================
 
+def _aggregate_ingredients_used(
+    ingredients_used: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Gabungkan item_id yang sama agar tidak diproses dua kali.
+    Ini penting jika satu bahan muncul di beberapa baris recipe dan frontend
+    mengirim item_id yang sama lebih dari sekali.
+    """
+    merged: dict[str, float] = {}
+
+    for usage in ingredients_used:
+        item_id = usage["item_id"]
+        qty_used = float(usage["quantity_used"])
+
+        if qty_used <= 0:
+            raise ValueError("quantity_used harus lebih besar dari 0")
+
+        merged[item_id] = merged.get(item_id, 0.0) + qty_used
+
+    return [
+        {"item_id": item_id, "quantity_used": qty}
+        for item_id, qty in merged.items()
+    ]
+
+
 def reconcile_inventory(
     user_id: str,
     recipe_id: int | None,
@@ -129,41 +150,19 @@ def reconcile_inventory(
     """
     Kurangi stok bahan setelah user konfirmasi selesai masak,
     dan catat ke consumption_history (parent) + consumption_history_items (children).
-
-    PERBAIKAN BESAR DARI VERSI LAMA:
-    - Versi lama mencoba insert ke tabel `consumption_history_log` yang TIDAK ADA
-      di schema. Sekarang pakai tabel yang sebenarnya: consumption_history +
-      consumption_history_items. Akibatnya RiwayatScreen sekarang akan terisi
-      data.
-    - recipe_id sekarang OPTIONAL. Recommender mengembalikan `index` (row pickle),
-      bukan DB primary key — jadi kita tidak bisa selalu set recipe_id.
-      Lebih aman None daripada FK error.
-
-    Args:
-        user_id: ID pengguna.
-        recipe_id: ID resep di DB (optional). None jika tidak diketahui.
-        recipe_title: Judul resep.
-        ingredients_used: List of dict dengan keys:
-            - item_id: UUID bahan di inventory_stock
-            - quantity_used: Jumlah yang digunakan
-
-    Returns:
-        Dict ringkasan hasil reconciliation.
-
-    Raises:
-        ValueError: Jika stok tidak cukup atau item tidak ditemukan.
     """
     sb = get_supabase()
     updated_items: list[dict] = []
     deleted_items: list[str] = []
-    items_snapshot: list[dict] = []  # untuk consumption_history_items
+    items_snapshot: list[dict] = []
 
     try:
-        for usage in ingredients_used:
+        normalized_usages = _aggregate_ingredients_used(ingredients_used)
+
+        for usage in normalized_usages:
             item_id = usage["item_id"]
             qty_used = float(usage["quantity_used"])
 
-            # Ambil stok saat ini
             current = (
                 sb.table("inventory_stock")
                 .select("id, item_name, quantity, unit")
@@ -186,7 +185,6 @@ def reconcile_inventory(
 
             new_qty = current_qty - qty_used
 
-            # SNAPSHOT dulu sebelum delete (kalau new_qty <= 0 row akan hilang)
             items_snapshot.append({
                 "inventory_stock_id": item_id,
                 "item_name": current.data["item_name"],
@@ -195,11 +193,9 @@ def reconcile_inventory(
             })
 
             if new_qty <= 0:
-                # Hapus item jika stok habis
                 sb.table("inventory_stock").delete().eq("id", item_id).eq("user_id", user_id).execute()
                 deleted_items.append(current.data["item_name"])
             else:
-                # Update kuantitas
                 sb.table("inventory_stock").update({"quantity": new_qty}).eq("id", item_id).eq("user_id", user_id).execute()
                 updated_items.append({
                     "item_name": current.data["item_name"],
@@ -208,18 +204,13 @@ def reconcile_inventory(
                     "unit": current.data["unit"],
                 })
 
-        # ====================================================================
-        # Catat ke consumption_history (parent) + consumption_history_items
-        # PERBAIKAN: pakai schema yang BENAR sesuai 001_schema.sql
-        # ====================================================================
         try:
             parent_row: dict[str, Any] = {
                 "user_id": user_id,
                 "recipe_title": recipe_title,
                 "cooked_at": datetime.utcnow().isoformat(),
             }
-            # recipe_id optional — hanya set kalau valid
-            # (recommender index ≠ DB primary key, jadi defaultnya None)
+
             if recipe_id is not None:
                 parent_row["recipe_id"] = recipe_id
 
@@ -228,7 +219,6 @@ def reconcile_inventory(
             if parent_result.data:
                 consumption_id = parent_result.data[0]["id"]
 
-                # Insert children records
                 children_rows = [
                     {**snap, "consumption_id": consumption_id}
                     for snap in items_snapshot
@@ -241,7 +231,6 @@ def reconcile_inventory(
                     recipe_title, len(items_snapshot), user_id
                 )
         except Exception as log_err:
-            # Log gagal tidak boleh menggagalkan reconciliation utama
             logger.warning("Gagal mencatat riwayat konsumsi: %s", log_err)
 
         return {
@@ -261,7 +250,6 @@ def reconcile_inventory(
 # Fetch inventory dengan SPI enrichment (untuk recommend endpoint)
 
 def get_user_inventory_with_spi(user_id: str) -> list[dict[str, Any]]:
-    # Ambil seluruh inventaris user, diperkaya dengan SPI score
     sb = get_supabase()
 
     try:

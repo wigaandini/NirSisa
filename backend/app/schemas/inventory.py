@@ -1,8 +1,7 @@
-# Pydantic schemas untuk Inventory endpoints
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Optional, List, Dict
+from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -60,18 +59,22 @@ class ReconciliationRequest(BaseModel):
     """
     Request body untuk konfirmasi selesai masak.
 
-    PERBAIKAN: recipe_id sekarang OPTIONAL.
-    Recommender mengembalikan `index` (row pickle), bukan DB primary key,
-    jadi kita tidak bisa selalu mengisi recipe_id. Tabel consumption_history
-    sendiri sudah nullable di kolom recipe_id (ON DELETE SET NULL).
+    PERUBAHAN:
+    - recipe_id tetap optional
+    - ingredients_used sekarang BOLEH kosong
+      karena user tetap bisa konfirmasi masak walau tidak semua bahan di stok
+      cocok / tervalidasi untuk auto-deduction.
+    - Jika kosong, backend hanya mencatat riwayat masak tanpa mengurangi stok.
     """
+
     recipe_id: int | None = Field(
         default=None,
         description="ID resep di tabel `recipes` (optional). None kalau tidak diketahui.",
     )
     recipe_title: str = Field(..., min_length=1, max_length=300)
     ingredients_used: List[IngredientUsage] = Field(
-        ..., min_length=1, description="Daftar bahan yang digunakan beserta jumlahnya"
+        default_factory=list,
+        description="Daftar bahan yang benar-benar akan dikurangi dari stok. Boleh kosong jika hanya ingin simpan riwayat memasak tanpa auto-deduction.",
     )
 
 

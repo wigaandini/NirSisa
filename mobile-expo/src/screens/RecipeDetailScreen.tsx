@@ -13,7 +13,6 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ChefAIStackParamList } from "../navigation/AppNavigator";
-// ▼▼▼ FIX: ganti dummy data ke API client + types ▼▼▼
 import { api, extractApiError } from "../services/api";
 import {
   InventoryItemResponse,
@@ -21,7 +20,6 @@ import {
   ReconciliationResponse,
 } from "../types/api";
 import { capitalizeEachWord } from "../utils/formatters";
-// ▲▲▲
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
@@ -31,32 +29,280 @@ type Props = NativeStackScreenProps<ChefAIStackParamList, "RecipeDetail">;
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Parse string ingredients/steps mentah dari dataset.
- * Format dataset Indonesian Food Recipes biasanya pakai "--" sebagai delimiter
- * antar item, tapi kadang juga newline. Coba dua-duanya.
- */
 const parseRawList = (raw: string): string[] => {
   if (!raw) return [];
-  // Coba split "--" dulu (format Cookpad/Kaggle)
   let parts = raw.split("--").map((s) => s.trim()).filter(Boolean);
-  // Kalau cuma 1 item, fallback ke newline
   if (parts.length <= 1) {
     parts = raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   }
-  // Bersihkan numbering "1. ", "1) " di awal
-  return parts.map((p) => p.replace(/^\d+[.)]\s*/, ""));
+
+  return parts
+    .map((p) => p.replace(/^\d+[.)]\s*/, "").trim())
+    .filter((p) => p.length > 0)
+    .filter((p) => !/^bahan\s*:?\s*$/i.test(p));
 };
 
-/**
- * Local view model untuk satu baris bahan di UI.
- * Sebelumnya dari dummy `Ingredient` type. Sekarang dibangun client-side
- * dari recipe.ingredients (raw text) + matching ke user inventory.
- */
+const normalizeText = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[()]/g, " ")
+    .replace(/[,;:+]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const UNIT_ALIASES: Record<string, string> = {
+  gr: "g",
+  gram: "g",
+  grams: "g",
+  ons: "ons",
+  kg: "kg",
+  kilogram: "kg",
+  ml: "ml",
+  l: "l",
+  liter: "l",
+  sdt: "tsp",
+  sdm: "tbsp",
+  tsp: "tsp",
+  tbsp: "tbsp",
+  butir: "pcs",
+  buah: "pcs",
+  pcs: "pcs",
+  pc: "pcs",
+  batang: "batang",
+  btg: "batang",
+  siung: "siung",
+  ikat: "ikat",
+};
+
+type UnitGroup = "weight" | "volume" | "count" | "other";
+
+const normalizeUnit = (unit?: string | null): string | null => {
+  if (!unit) return null;
+  return UNIT_ALIASES[normalizeText(unit)] || normalizeText(unit);
+};
+
+const getUnitGroup = (unit: string | null): UnitGroup | null => {
+  if (!unit) return null;
+  if (["g", "kg", "ons"].includes(unit)) return "weight";
+  if (["ml", "l", "tsp", "tbsp"].includes(unit)) return "volume";
+  if (["pcs", "batang", "siung", "ikat"].includes(unit)) return "count";
+  return "other";
+};
+
+const parseFractionNumber = (raw: string): number | null => {
+  const value = raw.replace(",", ".").trim();
+
+  if (/^\d+\s+\d+\/\d+$/.test(value)) {
+    const [whole, frac] = value.split(" ");
+    const [a, b] = frac.split("/").map(Number);
+    if (!b) return null;
+    return Number(whole) + a / b;
+  }
+
+  if (/^\d+\/\d+$/.test(value)) {
+    const [a, b] = value.split("/").map(Number);
+    if (!b) return null;
+    return a / b;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const extractRequestedAmount = (
+  text: string
+): { quantity: number | null; unit: string | null } => {
+  const normalized = normalizeText(text);
+
+  if (/^secukupnya\b/i.test(normalized)) {
+    return { quantity: null, unit: null };
+  }
+
+  const match = normalized.match(
+    /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:[.,]\d+)?)\s*([a-zA-Z]+)?/
+  );
+
+  if (!match) {
+    return { quantity: null, unit: null };
+  }
+
+  return {
+    quantity: parseFractionNumber(match[1]),
+    unit: normalizeUnit(match[2] || null),
+  };
+};
+
+const convertToBase = (
+  quantity: number,
+  unit: string
+): { group: UnitGroup; value: number } | null => {
+  const group = getUnitGroup(unit);
+  if (!group || group === "other") return null;
+
+  if (group === "weight") {
+    if (unit === "g") return { group, value: quantity };
+    if (unit === "kg") return { group, value: quantity * 1000 };
+    if (unit === "ons") return { group, value: quantity * 100 };
+  }
+
+  if (group === "volume") {
+    if (unit === "ml") return { group, value: quantity };
+    if (unit === "l") return { group, value: quantity * 1000 };
+    if (unit === "tsp") return { group, value: quantity * 5 };
+    if (unit === "tbsp") return { group, value: quantity * 15 };
+  }
+
+  if (group === "count") {
+    if (["pcs", "batang", "siung", "ikat"].includes(unit)) {
+      return { group, value: quantity };
+    }
+  }
+
+  return null;
+};
+
+const convertRequestedToInventoryUnit = (
+  quantity: number | null,
+  requestedUnit: string | null,
+  inventoryUnit: string | null
+): number | null => {
+  if (quantity === null || !requestedUnit || !inventoryUnit) return null;
+
+  const normalizedInventoryUnit = normalizeUnit(inventoryUnit);
+  if (!normalizedInventoryUnit) return null;
+
+  const requestedBase = convertToBase(quantity, requestedUnit);
+  const inventoryBasePerUnit = convertToBase(1, normalizedInventoryUnit);
+
+  if (!requestedBase || !inventoryBasePerUnit) return null;
+  if (requestedBase.group !== inventoryBasePerUnit.group) return null;
+
+  if (
+    requestedBase.group === "count" &&
+    normalizeUnit(requestedUnit) !== normalizedInventoryUnit
+  ) {
+    return null;
+  }
+
+  return requestedBase.value / inventoryBasePerUnit.value;
+};
+
+const STOPWORDS = new Set([
+  "gram",
+  "gr",
+  "kg",
+  "ons",
+  "ml",
+  "l",
+  "liter",
+  "sdt",
+  "sdm",
+  "tsp",
+  "tbsp",
+  "butir",
+  "buah",
+  "pcs",
+  "pc",
+  "batang",
+  "siung",
+  "ikat",
+  "lembar",
+  "cm",
+  "secukupnya",
+  "sesuai",
+  "selera",
+  "iris",
+  "tipis",
+  "halus",
+  "kasar",
+  "potong",
+  "buang",
+  "kulit",
+  "kerasnya",
+  "bahan",
+  "dan",
+  "atau",
+]);
+
+const tokenizeIngredient = (text: string): string[] => {
+  return normalizeText(text)
+    .replace(/[0-9/.,]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2 && !STOPWORDS.has(token));
+};
+
+const hasWholePhrase = (haystack: string, needle: string): boolean => {
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(^|\\s)${escaped}(\\s|$)`, "i");
+  return regex.test(haystack);
+};
+
+const scoreInventoryMatch = (
+  ingredientText: string,
+  inventoryItem: InventoryItemResponse
+): number => {
+  const ingredientNormalized = normalizeText(ingredientText);
+  const inventoryName = normalizeText(
+    inventoryItem.item_name_normalized || inventoryItem.item_name || ""
+  );
+
+  if (!inventoryName) return 0;
+
+  if (hasWholePhrase(ingredientNormalized, inventoryName)) {
+    return 100;
+  }
+
+  const ingredientTokens = new Set(tokenizeIngredient(ingredientText));
+  const inventoryTokens = tokenizeIngredient(inventoryName);
+
+  if (inventoryTokens.length === 0) return 0;
+
+  const overlap = inventoryTokens.filter((token) => ingredientTokens.has(token)).length;
+
+  if (overlap === 0) return 0;
+
+  const ratio = overlap / inventoryTokens.length;
+
+  if (ratio === 1) return 90;
+  if (ratio >= 0.75) return 70;
+  return 0;
+};
+
+const pickBestInventoryMatch = (
+  ingredientText: string,
+  inventory: InventoryItemResponse[]
+): InventoryItemResponse | null => {
+  let best: InventoryItemResponse | null = null;
+  let bestScore = 0;
+
+  for (const inv of inventory) {
+    const score = scoreInventoryMatch(ingredientText, inv);
+    if (score > bestScore) {
+      best = inv;
+      bestScore = score;
+    }
+  }
+
+  if (bestScore < 70) return null;
+  return best;
+};
+
+type IngredientMatchStatus =
+  | "safe"
+  | "partial"
+  | "uncertain"
+  | "missing";
+
 interface IngredientView {
   id: string;
-  text: string;            // teks asli dari dataset
-  matchedItem: InventoryItemResponse | null; // null = user tidak punya bahan ini
+  text: string;
+  matchedItem: InventoryItemResponse | null;
+  requestedQuantity: number | null;
+  requestedUnit: string | null;
+  quantityToUse: number | null;
+  status: IngredientMatchStatus;
+  helperText: string;
 }
 
 interface StepView {
@@ -65,12 +311,18 @@ interface StepView {
   text: string;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SUB-COMPONENTS
-// ─────────────────────────────────────────────────────────────────────────────
-
 const IngredientRow: React.FC<{ item: IngredientView }> = ({ item }) => {
-  const isAvailable = item.matchedItem !== null;
+  let statusStyle = styles.ingredientStatusRed;
+  let iconName: keyof typeof Ionicons.glyphMap = "close";
+
+  if (item.status === "safe") {
+    statusStyle = styles.ingredientStatusGreen;
+    iconName = "checkmark";
+  } else if (item.status === "partial" || item.status === "uncertain") {
+    statusStyle = styles.ingredientStatusOrange;
+    iconName = "alert";
+  }
+
   return (
     <View style={styles.ingredientRow}>
       <View style={styles.ingredientInfo}>
@@ -78,21 +330,16 @@ const IngredientRow: React.FC<{ item: IngredientView }> = ({ item }) => {
         <Text
           style={[
             styles.ingredientSub,
-            !isAvailable && styles.ingredientSubInsufficient,
+            item.status === "missing" && styles.ingredientSubInsufficient,
+            (item.status === "partial" || item.status === "uncertain") &&
+              styles.ingredientSubWarning,
           ]}
         >
-          {isAvailable
-            ? `Tersedia: ${item.matchedItem!.quantity} ${item.matchedItem!.unit || ""}`
-            : "Tidak ada di stok"}
+          {item.helperText}
         </Text>
       </View>
-      <View
-        style={[
-          styles.ingredientStatus,
-          isAvailable ? styles.ingredientStatusGreen : styles.ingredientStatusRed,
-        ]}
-      >
-        <Ionicons name={isAvailable ? "checkmark" : "close"} size={16} color="#FFFFFF" />
+      <View style={[styles.ingredientStatus, statusStyle]}>
+        <Ionicons name={iconName} size={16} color="#FFFFFF" />
       </View>
     </View>
   );
@@ -112,20 +359,13 @@ const StepRow: React.FC<{ item: StepView; isLast: boolean }> = ({ item, isLast }
   </View>
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN SCREEN
-// ─────────────────────────────────────────────────────────────────────────────
-
 const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
-  // ▼▼▼ FIX: ambil recipe dari route params, bukan lookup di dummy RECIPES ▼▼▼
   const { recipe } = route.params;
-  // ▲▲▲
 
   const [inventory, setInventory] = useState<InventoryItemResponse[]>([]);
   const [loadingInventory, setLoadingInventory] = useState(true);
   const [reconciling, setReconciling] = useState(false);
 
-  // Fetch user inventory untuk matching
   useEffect(() => {
     (async () => {
       try {
@@ -139,17 +379,77 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     })();
   }, []);
 
-  // Parse ingredients & steps + match dengan inventory user
   const ingredientList: IngredientView[] = useMemo(() => {
     const lines = parseRawList(recipe.ingredients);
+
     return lines.map((text, idx) => {
-      // Match: cek apakah salah satu inventory item name muncul di teks ingredient
-      const matched = inventory.find((inv) => {
-        const invName = (inv.item_name_normalized || inv.item_name || "").toLowerCase().trim();
-        if (!invName) return false;
-        return text.toLowerCase().includes(invName);
-      }) || null;
-      return { id: `ing-${idx}`, text, matchedItem: matched };
+      const matched = pickBestInventoryMatch(text, inventory);
+      const requested = extractRequestedAmount(text);
+
+      if (!matched) {
+        return {
+          id: `ing-${idx}`,
+          text,
+          matchedItem: null,
+          requestedQuantity: requested.quantity,
+          requestedUnit: requested.unit,
+          quantityToUse: null,
+          status: "missing",
+          helperText: "Tidak ada match stok yang aman",
+        };
+      }
+
+      const stockUnit = normalizeUnit(matched.unit);
+      const quantityToUse = convertRequestedToInventoryUnit(
+        requested.quantity,
+        requested.unit,
+        stockUnit
+      );
+
+      // Jika ada match nama bahan, tapi jumlah/satuan tidak bisa divalidasi,
+      // tetap dianggap boleh lanjut masak. Hanya saja stok tidak dikurangi otomatis.
+      if (quantityToUse === null) {
+        return {
+          id: `ing-${idx}`,
+          text,
+          matchedItem: matched,
+          requestedQuantity: requested.quantity,
+          requestedUnit: requested.unit,
+          quantityToUse: null,
+          status: "partial",
+          helperText: `Bahan cocok ke ${capitalizeEachWord(
+            matched.item_name
+          )}, tetapi jumlah/satuan belum bisa dipotong otomatis`,
+        };
+      }
+
+      if (quantityToUse > matched.quantity) {
+        return {
+          id: `ing-${idx}`,
+          text,
+          matchedItem: matched,
+          requestedQuantity: requested.quantity,
+          requestedUnit: requested.unit,
+          quantityToUse: null,
+          status: "partial",
+          helperText: `Bahan cocok ke ${capitalizeEachWord(
+            matched.item_name
+          )}, tetapi stok tidak cukup untuk potong otomatis`,
+        };
+      }
+
+      return {
+        id: `ing-${idx}`,
+        text,
+        matchedItem: matched,
+        requestedQuantity: requested.quantity,
+        requestedUnit: requested.unit,
+        quantityToUse,
+        status: "safe",
+        helperText: `Akan pakai ${quantityToUse.toFixed(2)} ${matched.unit || ""} dari stok ${
+          matched.quantity
+        } ${matched.unit || ""}`,
+      };
     });
   }, [recipe.ingredients, inventory]);
 
@@ -161,41 +461,70 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     }));
   }, [recipe.steps]);
 
-  // List bahan user yang akan dikurangi saat masak
-  const itemsToConsume = useMemo(() => {
-    const matched = ingredientList
-      .map((i) => i.matchedItem)
-      .filter((x): x is InventoryItemResponse => x !== null);
-    // Dedupe by id (kalau bahan yang sama match ke beberapa baris ingredient)
-    const seen = new Set<string>();
-    return matched.filter((item) => {
-      if (seen.has(item.id)) return false;
-      seen.add(item.id);
-      return true;
-    });
+  const payloadIngredients = useMemo(() => {
+    const aggregated = new Map<
+      string,
+      { item_id: string; quantity_used: number; item_name: string; unit: string | null }
+    >();
+
+    ingredientList
+      .filter(
+        (item) =>
+          item.status === "safe" &&
+          item.matchedItem &&
+          item.quantityToUse !== null
+      )
+      .forEach((item) => {
+        const key = item.matchedItem!.id;
+        const current = aggregated.get(key);
+
+        if (current) {
+          current.quantity_used += item.quantityToUse!;
+        } else {
+          aggregated.set(key, {
+            item_id: item.matchedItem!.id,
+            quantity_used: item.quantityToUse!,
+            item_name: item.matchedItem!.item_name,
+            unit: item.matchedItem!.unit || null,
+          });
+        }
+      });
+
+    return Array.from(aggregated.values());
   }, [ingredientList]);
 
-  const hasInsufficient = ingredientList.some((i) => i.matchedItem === null);
+  const hasAnyMatchedIngredients = ingredientList.some((item) => item.matchedItem !== null);
+  const hasAnyValidatedIngredients = payloadIngredients.length > 0;
+  const hasIssues = ingredientList.some((item) => item.status !== "safe");
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // RECONCILIATION HANDLER
-  // ─────────────────────────────────────────────────────────────────────────
   const handleKonfirmasiMasak = async () => {
-    if (itemsToConsume.length === 0) {
+    if (!hasAnyMatchedIngredients) {
       Alert.alert(
-        "Tidak Ada Bahan",
-        "Tidak ada bahan di stok Anda yang cocok dengan resep ini. Pastikan stok bahan sudah ditambahkan."
+        "Belum Bisa Dikonfirmasi",
+        "Belum ada bahan resep yang cocok dengan stok Anda. Tambahkan minimal satu bahan yang relevan ke stok terlebih dahulu."
       );
       return;
     }
 
-    const summary = itemsToConsume
-      .map((it) => `• ${capitalizeEachWord(it.item_name)} (1 ${it.unit || "unit"})`)
-      .join("\n");
+    const summary =
+      payloadIngredients.length > 0
+        ? payloadIngredients
+            .map(
+              (it) =>
+                `• ${capitalizeEachWord(it.item_name)} (${it.quantity_used.toFixed(2)} ${
+                  it.unit || "unit"
+                })`
+            )
+            .join("\n")
+        : "• Tidak ada bahan yang bisa dipotong otomatis dari stok";
+
+    const note = hasIssues
+      ? "\n\nCatatan: bahan yang tidak cocok, ambigu, atau stoknya tidak cukup tetap tidak akan menghalangi konfirmasi masak. Hanya bahan yang tervalidasi yang akan dipotong otomatis."
+      : "";
 
     Alert.alert(
       "Konfirmasi Masak",
-      `Bahan berikut akan dikurangi dari stok Anda:\n\n${summary}\n\nLanjutkan?`,
+      `Anda tetap bisa konfirmasi masak meskipun tidak semua bahan tersedia.\n\nYang akan diproses dari stok:\n\n${summary}${note}\n\nLanjutkan?`,
       [
         { text: "Batal", style: "cancel" },
         {
@@ -209,18 +538,14 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const doReconcile = async () => {
     setReconciling(true);
+
     try {
-      // Default deduct: 1 unit per matched item, dibatasi current quantity.
-      // Strategi sederhana untuk MVP — bisa di-upgrade nanti jadi modal
-      // dengan input quantity per item.
       const payload: ReconciliationRequest = {
-        // recipe_id sengaja TIDAK dikirim — karena recipe.index dari recommender
-        // itu row pickle, BUKAN DB primary key. Backend sudah handle ini sebagai
-        // optional dan akan tetap mencatat history dengan recipe_title.
+        recipe_id: null,
         recipe_title: recipe.title,
-        ingredients_used: itemsToConsume.map((it) => ({
-          item_id: it.id,
-          quantity_used: Math.min(1, it.quantity),
+        ingredients_used: payloadIngredients.map((it) => ({
+          item_id: it.item_id,
+          quantity_used: Number(it.quantity_used.toFixed(4)),
         })),
       };
 
@@ -229,10 +554,16 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
       const updatedCount = data.items_updated.length;
       const removedCount = data.items_removed.length;
+      const totalConsumed = updatedCount + removedCount;
+
+      const stockMessage =
+        totalConsumed > 0
+          ? `${totalConsumed} bahan diproses dari stok.\n${updatedCount} bahan dikurangi, ${removedCount} bahan habis.`
+          : "Riwayat masak tersimpan, tetapi tidak ada bahan stok yang dipotong otomatis.";
 
       Alert.alert(
         "Berhasil Masak! 🎉",
-        `${updatedCount} bahan dikurangi, ${removedCount} bahan habis.\n\nResep tersimpan di Riwayat.`,
+        `${stockMessage}\n\nResep tersimpan di Riwayat.`,
         [{ text: "OK", onPress: () => navigation.goBack() }]
       );
     } catch (err) {
@@ -250,7 +581,6 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={22} color="#2B2B2B" />
@@ -261,10 +591,8 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Title */}
         <Text style={styles.title}>{capitalizeEachWord(recipe.title)}</Text>
 
-        {/* Match percentage banner */}
         <View style={styles.matchBanner}>
           <Ionicons name="sparkles" size={16} color="#BB0009" />
           <Text style={styles.matchBannerText}>
@@ -273,18 +601,21 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           </Text>
         </View>
 
-        {/* Warning Banner */}
-        {hasInsufficient && (
+        {hasIssues && (
           <View style={styles.warningBanner}>
-            <Ionicons name="information-circle" size={20} color="#D97706" style={styles.warningIcon} />
+            <Ionicons
+              name="information-circle"
+              size={20}
+              color="#D97706"
+              style={styles.warningIcon}
+            />
             <Text style={styles.warningText}>
-              Beberapa bahan tidak ada di stok Anda. Anda tetap bisa masak, namun pastikan
-              membeli bahan yang kurang terlebih dahulu.
+              Anda tetap bisa konfirmasi masak walaupun ada bahan yang belum terpenuhi.
+              Hanya bahan yang tervalidasi otomatis yang akan dikurangi dari stok.
             </Text>
           </View>
         )}
 
-        {/* Bahan-Bahan */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Bahan-Bahan</Text>
           <Text style={styles.sectionMeta}>{ingredientList.length} item total</Text>
@@ -303,7 +634,6 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         )}
 
-        {/* Langkah-Langkah */}
         <Text style={[styles.sectionTitle, { marginTop: 28, marginBottom: 16 }]}>
           Langkah-Langkah
         </Text>
@@ -316,13 +646,15 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={{ height: 32 }} />
       </ScrollView>
 
-      {/* Sticky Bottom Button */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[styles.confirmButton, reconciling && { opacity: 0.6 }]}
+          style={[
+            styles.confirmButton,
+            (!hasAnyMatchedIngredients || reconciling) && { opacity: 0.6 },
+          ]}
           activeOpacity={0.85}
           onPress={handleKonfirmasiMasak}
-          disabled={reconciling}
+          disabled={!hasAnyMatchedIngredients || reconciling}
         >
           {reconciling ? (
             <ActivityIndicator color="#FFFFFF" />
@@ -440,7 +772,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 4,
   },
-  // ── Ingredients ──
   ingredientRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -464,6 +795,9 @@ const styles = StyleSheet.create({
   ingredientSubInsufficient: {
     color: "#BB0009",
   },
+  ingredientSubWarning: {
+    color: "#D97706",
+  },
   ingredientStatus: {
     width: 28,
     height: 28,
@@ -477,12 +811,14 @@ const styles = StyleSheet.create({
   ingredientStatusRed: {
     backgroundColor: "#BB0009",
   },
+  ingredientStatusOrange: {
+    backgroundColor: "#D97706",
+  },
   separator: {
     height: 1,
     backgroundColor: "#F5F5F5",
     marginLeft: 0,
   },
-  // ── Steps ──
   stepRow: {
     flexDirection: "row",
     paddingTop: 16,
@@ -524,7 +860,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 6,
   },
-  // ── Bottom Bar ──
   bottomBar: {
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 24,
