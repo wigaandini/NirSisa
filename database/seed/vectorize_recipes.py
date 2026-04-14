@@ -24,6 +24,7 @@ import pandas as pd
 import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+
 try:
     from supabase import create_client, Client
     from dotenv import load_dotenv
@@ -57,6 +58,11 @@ ARTIFACT_DIR.mkdir(exist_ok=True)
 ML_MODEL_DIR.mkdir(exist_ok=True)
 DATA_DIR.mkdir(exist_ok=True)
 
+# Add backend/ to sys.path so pickle stores 'app.ai.cbf.comma_tokenizer'
+# This ensures Railway can deserialize the vectorizer correctly
+sys.path.insert(0, str(_ROOT_DIR / "backend"))
+from app.ai.cbf import comma_tokenizer
+
 # ─── Supabase ────────────────────────────────────────────────────────────────
 
 load_dotenv(_DB_DIR / ".env")
@@ -71,19 +77,8 @@ def get_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-# ─── Custom tokenizer ───────────────────────────────────────────────────────
-
-def comma_tokenizer(text: str) -> list[str]:
-    """Split ingredients by comma, strip whitespace, join multi-word as compound token."""
-    tokens = []
-    for part in text.split(","):
-        token = part.strip()
-        if token:
-            # Join multi-word ingredients with underscore for TF-IDF
-            # "bawang putih" → "bawang_putih"
-            token = "_".join(token.split())
-            tokens.append(token)
-    return tokens
+# comma_tokenizer imported from app.ai.cbf (above)
+# This ensures pickle stores 'app.ai.cbf.comma_tokenizer' as the reference
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
