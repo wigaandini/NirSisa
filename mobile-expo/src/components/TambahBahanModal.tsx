@@ -66,7 +66,7 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
   const [tanggal, setTanggal] = useState("");
   const [isNatural, setIsNatural] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [suggestions, setSuggestions] = useState<{ingredient_name: string; default_unit: string}[]>([]);
+  const [suggestions, setSuggestions] = useState<{ingredient_name: string; default_unit: string; category_display?: string}[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -115,13 +115,16 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
     }, 300);
   };
 
-  // User picks a suggestion
-  const handlePickSuggestion = (item: { ingredient_name: string; default_unit: string }) => {
+  // User picks a suggestion → auto-fill nama + satuan + kategori
+  const handlePickSuggestion = (item: { ingredient_name: string; default_unit: string; category_display?: string }) => {
     setNama(item.ingredient_name);
     setSatuan(item.default_unit);
     setSatuanManual(false);
     setShowSuggestions(false);
     setSuggestions([]);
+    if (item.category_display && KATEGORI_OPTIONS.includes(item.category_display)) {
+      setKategori(item.category_display);
+    }
   };
 
   const handleClose = () => {

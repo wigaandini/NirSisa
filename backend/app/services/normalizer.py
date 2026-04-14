@@ -254,22 +254,57 @@ def suggest_unit(item_name: str, category_id: int | None = None) -> dict:
     }
 
 
+_category_name_cache: dict[int, str] | None = None
+
+def _load_category_names() -> dict[int, str]:
+    global _category_name_cache
+    if _category_name_cache is not None:
+        return _category_name_cache
+    try:
+        sb = get_supabase()
+        result = sb.table("ingredient_categories").select("id, name").execute()
+        _category_name_cache = {r["id"]: r["name"] for r in result.data}
+    except Exception:
+        _category_name_cache = {}
+    return _category_name_cache
+
+
+# Display name mapping for frontend
+_CATEGORY_DISPLAY: dict[str, str] = {
+    "sayur": "Sayuran", "sayur_daun": "Sayuran", "sayur_buah": "Sayuran",
+    "buah": "Buah-Buahan",
+    "daging_sapi": "Daging Sapi", "daging_ayam": "Daging Ayam", "daging_kambing": "Daging Kambing",
+    "ikan_segar": "Ikan", "udang": "Udang", "telur": "Telur",
+    "tahu": "Tahu", "tempe": "Tempe", "dairy": "Susu & Olahan",
+    "bumbu_segar": "Bumbu Segar", "bumbu_bawangan": "Bumbu Segar",
+    "bumbu_rimpang": "Bumbu Segar", "bumbu_batangan": "Bumbu Segar",
+    "bumbu_daunan": "Bumbu Segar", "cabai": "Bumbu Segar",
+    "bumbu_kering": "Bumbu Kering", "bahan_olahan": "Produk Jadi",
+    "minyak_lemak": "Minyak & Lemak", "tepung_kering": "Tepung",
+    "kacang_biji": "Kacang-kacangan", "roti_bakery": "Roti & Bakery",
+}
+
+
 def search_ingredients(query: str, limit: int = 10) -> list[dict]:
     q = query.lower().strip()
     if len(q) < 2:
         return []
     shelf_data = _load_shelf_life_full()
+    cat_names = _load_category_names()
     results = []
     for row in shelf_data:
         name = row["ingredient_name"].lower()
         if q in name:
+            cat_id = row.get("category_id")
+            db_name = cat_names.get(cat_id, "") if cat_id else ""
+            display_name = _CATEGORY_DISPLAY.get(db_name, "Lainnya")
             results.append({
                 "ingredient_name": row["ingredient_name"],
                 "default_unit": row.get("default_unit", "buah"),
                 "shelf_life_days": row.get("shelf_life_days"),
-                "category_id": row.get("category_id"),
+                "category_id": cat_id,
+                "category_display": display_name,
             })
-    # Sort: exact start match first, then alphabetical
     results.sort(key=lambda r: (0 if r["ingredient_name"].lower().startswith(q) else 1, r["ingredient_name"]))
     return results[:limit]
 
