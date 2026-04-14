@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,10 @@ import {
   Image,
   Platform,
   ActivityIndicator,
-  Alert,
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
@@ -30,8 +29,14 @@ interface InventoryItem {
   quantity: number;
   unit: string;
   days_remaining: number;
-  freshness_status: 'fresh' | 'warning' | 'critical';
+  freshness_status: "fresh" | "warning" | "critical";
 }
+
+const normalizeTitle = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
 
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -48,15 +53,31 @@ const HomeScreen: React.FC = () => {
     fetchInitialData();
   }, []);
 
+  // Refresh juga setiap screen Beranda kembali fokus
+  useFocusEffect(
+    useCallback(() => {
+      fetchInitialData();
+    }, [])
+  );
+
   const fetchInitialData = async () => {
     setLoading(true);
+
     try {
       // 1. Ambil User Auth
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       if (user) {
         console.log("LOGGED IN USER ID:", user.id);
       }
-      if (!user) return;
+      if (!user) {
+        setRecipes([]);
+        setExpiringItems([]);
+        setTotalStock(0);
+        return;
+      }
 
       // 2. Ambil User Profile
       const { data: profile } = await supabase
@@ -64,12 +85,15 @@ const HomeScreen: React.FC = () => {
         .select("display_name")
         .eq("id", user.id)
         .single();
-      if (profile) setUserName(profile.display_name);
+
+      if (profile?.display_name) {
+        setUserName(profile.display_name);
+      }
 
       // 3. Ambil Total Count Stok
       const { count } = await supabase
         .from("inventory_stock")
-        .select("*", { count: 'exact', head: true })
+        .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .gt("quantity", 0);
 
@@ -85,25 +109,55 @@ const HomeScreen: React.FC = () => {
         .order("expiry_date", { ascending: true })
         .limit(3);
 
-      const processedStock = (stock || []).map(item => {
-        const diff = new Date(item.expiry_date).getTime() - new Date().getTime();
-        const days = Math.ceil(diff / (1000 * 3600 * 24));
+      const processedStock = (stock || []).map((item) => {
+        const expiryDate = item.expiry_date ? new Date(item.expiry_date) : null;
+        const now = new Date();
+
+        const days = expiryDate
+          ? Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 3600 * 24))
+          : 9999;
+
         return {
           ...item,
           days_remaining: days,
-          freshness_status: days <= 2 ? 'critical' : days <= 5 ? 'warning' : 'fresh'
+          freshness_status: days <= 2 ? "critical" : days <= 5 ? "warning" : "fresh",
         };
       });
+
       setExpiringItems(processedStock);
 
-      // 5. Ambil Rekomendasi AI (Hanya jika stok ada)
-      // ▼▼▼ FIX: pakai api client (token auto-injected) ▼▼▼
+      // 5. Ambil judul resep yang sudah pernah dimasak user
+      const { data: cookedHistory, error: cookedHistoryError } = await supabase
+        .from("consumption_history")
+        .select("recipe_title")
+        .eq("user_id", user.id);
+
+      if (cookedHistoryError) {
+        console.warn("Gagal fetch consumption_history:", cookedHistoryError.message);
+      }
+
+      const cookedTitles = new Set(
+        (cookedHistory || [])
+          .map((item: { recipe_title: string | null }) => item.recipe_title)
+          .filter((title): title is string => Boolean(title))
+          .map((title) => normalizeTitle(title))
+      );
+
+      // 6. Ambil Rekomendasi AI (Hanya jika stok ada)
       if (currentTotal > 0) {
         try {
+          // Ambil sedikit lebih banyak lalu filter resep yang sudah dimasak
           const res = await api.get<RecommendationResponse>("/recommend", {
-            params: { top_k: 2 },
+            params: { top_k: 8 },
           });
-          setRecipes(res.data.recommendations || []);
+
+          const recommendations = res.data.recommendations || [];
+
+          const filteredRecommendations = recommendations.filter(
+            (recipe) => !cookedTitles.has(normalizeTitle(recipe.title))
+          );
+
+          setRecipes(filteredRecommendations.slice(0, 2));
         } catch (apiError) {
           console.log("AI Recommendation log:", extractApiError(apiError));
           setRecipes([]);
@@ -111,8 +165,6 @@ const HomeScreen: React.FC = () => {
       } else {
         setRecipes([]);
       }
-      // ▲▲▲
-
     } catch (error: any) {
       console.error("Fatal Fetch Error:", error);
     } finally {
@@ -139,34 +191,37 @@ const HomeScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <View style={[styles.flex, { justifyContent: 'center' }]}>
+      <View style={[styles.flex, { justifyContent: "center" }]}>
         <ActivityIndicator size="large" color="#BB0009" />
       </View>
     );
   }
 
   return (
-        <View style={styles.flex}>
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                fetchInitialData();
-              }}
-              tintColor="#BB0009"
-            />
-          }
-        >
+    <View style={styles.flex}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchInitialData();
+            }}
+            tintColor="#BB0009"
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifButton} onPress={() => navigation.navigate("Notification")}>
+            <TouchableOpacity
+              style={styles.notifButton}
+              onPress={() => navigation.navigate("Notification")}
+            >
               <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
             </TouchableOpacity>
             <View style={styles.avatar}>
@@ -175,7 +230,7 @@ const HomeScreen: React.FC = () => {
           </View>
         </View>
 
-        <Text style={styles.greeting}>Halo, {userName.split(' ')[0]}!</Text>
+        <Text style={styles.greeting}>Halo, {userName.split(" ")[0]}!</Text>
         <Text style={styles.greetingSub}>
           Kamu punya {expiringItems.length} bahan yang harus kamu perhatikan minggu ini.
         </Text>
@@ -202,14 +257,14 @@ const HomeScreen: React.FC = () => {
                   borderColor: cardColors.borderColor,
                 },
               ]}
+              onPress={() => navigation.navigate("Main", { screen: "Stok" })}
+              activeOpacity={0.85}
             >
               <View style={[styles.expiryBadge, { backgroundColor: badge.color }]}>
                 <Text style={styles.expiryBadgeText}>{badge.label}</Text>
               </View>
               <View style={styles.expiryInfo}>
-                {/* ▼▼▼ FIX: capitalize nama bahan ▼▼▼ */}
                 <Text style={styles.expiryName}>{capitalizeEachWord(item.item_name)}</Text>
-                {/* ▲▲▲ */}
                 <Text style={styles.expiryQty}>
                   {item.quantity} {item.unit}
                 </Text>
@@ -230,12 +285,19 @@ const HomeScreen: React.FC = () => {
           <TouchableOpacity
             key={recipe.index}
             style={styles.recipeCard}
-            onPress={() => navigation.navigate("Main", { screen: "ChefAI" })}
+            onPress={() =>
+              navigation.navigate("Main", {
+                screen: "ChefAI",
+                params: {
+                  screen: "RecipeDetail",
+                  params: { recipe },
+                },
+              })
+            }
+            activeOpacity={0.85}
           >
             <Text style={styles.recipeTag}>REKOMENDASI UNTUKMU</Text>
-            {/* ▼▼▼ FIX: capitalize judul resep ▼▼▼ */}
             <Text style={styles.recipeName}>{capitalizeEachWord(recipe.title)}</Text>
-            {/* ▲▲▲ */}
             <View style={styles.recipeMeta}>
               <View style={styles.recipeMetaItem}>
                 <Ionicons name="list-outline" size={14} color="#656C6E" />
@@ -254,11 +316,15 @@ const HomeScreen: React.FC = () => {
         ))}
 
         {/* Active Stock Banner */}
-        <View style={styles.stockBanner}>
+        <TouchableOpacity
+          style={styles.stockBanner}
+          onPress={() => navigation.navigate("Main", { screen: "Stok" })}
+          activeOpacity={0.85}
+        >
           <Ionicons name="file-tray-full-outline" size={24} color="#FFFFFF" />
           <Text style={styles.stockBannerNumber}>{totalStock}</Text>
           <Text style={styles.stockBannerLabel}>BAHAN AKTIF DI STOK</Text>
-        </View>
+        </TouchableOpacity>
 
         <View style={{ height: 24 }} />
       </ScrollView>
