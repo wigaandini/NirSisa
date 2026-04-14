@@ -204,40 +204,74 @@ def _load_shelf_life_full() -> list[dict]:
     return _shelf_life_full_cache
 
 
-def suggest_unit(item_name: str) -> dict:
+def suggest_unit(item_name: str, category_id: int | None = None) -> dict:
     normalized = normalize_ingredient_name(item_name)
     shelf_data = _load_shelf_life_full()
 
-    # Exact match
+    def _make_result(row: dict) -> dict:
+        return {
+            "matched_name": row["ingredient_name"],
+            "default_unit": row.get("default_unit", "buah"),
+            "shelf_life_days": row.get("shelf_life_days"),
+            "category_id": row.get("category_id"),
+        }
+
+    # 1. Exact match
     for row in shelf_data:
         if row["ingredient_name"].lower() == normalized:
-            return {
-                "matched_name": row["ingredient_name"],
-                "default_unit": row.get("default_unit", "buah"),
-                "shelf_life_days": row.get("shelf_life_days"),
-                "category_id": row.get("category_id"),
-            }
+            return _make_result(row)
 
-    # Fuzzy match
+    # 2. Substring match: "sapi" matches "daging sapi"
+    for row in shelf_data:
+        name = row["ingredient_name"].lower()
+        if normalized in name or name in normalized:
+            return _make_result(row)
+
+    # 3. Fuzzy match (higher cutoff to avoid sapi→sawi)
     names = [r["ingredient_name"].lower() for r in shelf_data]
-    matches = get_close_matches(normalized, names, n=1, cutoff=0.7)
+    matches = get_close_matches(normalized, names, n=1, cutoff=0.8)
     if matches:
         for row in shelf_data:
             if row["ingredient_name"].lower() == matches[0]:
+                return _make_result(row)
+
+    # 4. Fallback by category_id if provided
+    if category_id is not None:
+        for row in shelf_data:
+            if row.get("category_id") == category_id:
                 return {
-                    "matched_name": row["ingredient_name"],
+                    "matched_name": None,
                     "default_unit": row.get("default_unit", "buah"),
-                    "shelf_life_days": row.get("shelf_life_days"),
-                    "category_id": row.get("category_id"),
+                    "shelf_life_days": None,
+                    "category_id": category_id,
                 }
 
-    # Fallback
     return {
         "matched_name": None,
         "default_unit": "buah",
         "shelf_life_days": None,
         "category_id": None,
     }
+
+
+def search_ingredients(query: str, limit: int = 10) -> list[dict]:
+    q = query.lower().strip()
+    if len(q) < 2:
+        return []
+    shelf_data = _load_shelf_life_full()
+    results = []
+    for row in shelf_data:
+        name = row["ingredient_name"].lower()
+        if q in name:
+            results.append({
+                "ingredient_name": row["ingredient_name"],
+                "default_unit": row.get("default_unit", "buah"),
+                "shelf_life_days": row.get("shelf_life_days"),
+                "category_id": row.get("category_id"),
+            })
+    # Sort: exact start match first, then alphabetical
+    results.sort(key=lambda r: (0 if r["ingredient_name"].lower().startswith(q) else 1, r["ingredient_name"]))
+    return results[:limit]
 
 
 def _get_default_shelf_life() -> dict[str, int]:

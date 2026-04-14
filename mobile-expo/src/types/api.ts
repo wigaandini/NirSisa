@@ -83,4 +83,5 @@ export interface ReconciliationResponse {
   recipe_title: string;
   items_updated: ReconciliationItemUpdated[];
   items_removed: string[];
+  skipped_items: string[];
 }

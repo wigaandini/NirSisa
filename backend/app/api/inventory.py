@@ -16,14 +16,19 @@ from app.services.inventory_service import (
     prepare_insert_row,
     reconcile_inventory,
 )
-from app.services.normalizer import normalize_ingredient_name, suggest_unit
+from app.services.normalizer import normalize_ingredient_name, suggest_unit, search_ingredients
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
 
+@router.get("/ingredient-search")
+async def ingredient_search(q: str, limit: int = 10):
+    return search_ingredients(q, limit=limit)
+
+
 @router.get("/unit-suggest")
-async def get_unit_suggestion(item_name: str):
-    result = suggest_unit(item_name)
+async def get_unit_suggestion(item_name: str, category_id: int | None = None):
+    result = suggest_unit(item_name, category_id=category_id)
     return {
         "item_name": item_name,
         "matched_name": result["matched_name"],

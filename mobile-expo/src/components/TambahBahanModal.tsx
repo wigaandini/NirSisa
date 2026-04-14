@@ -15,6 +15,7 @@ import {
   Switch, // Tambahkan Switch untuk opsi manual
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { api } from "../services/api";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
@@ -60,10 +61,14 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
   const [nama, setNama] = useState("");
   const [kategori, setKategori] = useState("");
   const [jumlah, setJumlah] = useState("");
-  const [satuan, setSatuan] = useState(""); // State baru
+  const [satuan, setSatuan] = useState("");
+  const [satuanManual, setSatuanManual] = useState(false);
   const [tanggal, setTanggal] = useState("");
-  const [isNatural, setIsNatural] = useState(true); // State baru
+  const [isNatural, setIsNatural] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<{ingredient_name: string; default_unit: string}[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -89,13 +94,46 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
     }
   }, [kategori]);
 
+  // Debounced ingredient search for autocomplete
+  const handleNamaChange = (text: string) => {
+    setNama(text);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (text.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.get("/inventory/ingredient-search", { params: { q: text.trim() } });
+        setSuggestions(res.data || []);
+        setShowSuggestions(res.data?.length > 0);
+      } catch {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 300);
+  };
+
+  // User picks a suggestion
+  const handlePickSuggestion = (item: { ingredient_name: string; default_unit: string }) => {
+    setNama(item.ingredient_name);
+    setSatuan(item.default_unit);
+    setSatuanManual(false);
+    setShowSuggestions(false);
+    setSuggestions([]);
+  };
+
   const handleClose = () => {
     setNama("");
     setKategori("");
     setJumlah("");
     setSatuan("");
+    setSatuanManual(false);
     setTanggal("");
     setDropdownOpen(false);
+    setSuggestions([]);
+    setShowSuggestions(false);
     onClose();
   };
 
@@ -153,7 +191,17 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
           <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
             
             <Text style={styles.fieldLabel}>NAMA BAHAN</Text>
-            <TextInput style={styles.textInput} placeholder="Contoh: Wortel" value={nama} onChangeText={setNama} />
+            <TextInput style={styles.textInput} placeholder="Contoh: Wortel" value={nama} onChangeText={handleNamaChange} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} />
+            {showSuggestions && (
+              <View style={styles.suggestionList}>
+                {suggestions.map((s, i) => (
+                  <TouchableOpacity key={i} style={styles.suggestionItem} onPress={() => handlePickSuggestion(s)}>
+                    <Text style={styles.suggestionText}>{s.ingredient_name}</Text>
+                    <Text style={styles.suggestionUnit}>{s.default_unit}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             <Text style={styles.fieldLabel}>KATEGORI</Text>
             <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setDropdownOpen(!dropdownOpen)}>
@@ -179,7 +227,7 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.fieldLabel}>SATUAN</Text>
-                <TextInput style={styles.textInput} placeholder="gram / ikat" value={satuan} onChangeText={setSatuan} />
+                <TextInput style={styles.textInput} placeholder="gram / ikat" value={satuan} onChangeText={(v) => { setSatuan(v); setSatuanManual(true); }} />
               </View>
             </View>
 
@@ -367,6 +415,38 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 16,
     color: "#FFFFFF",
+  },
+  suggestionList: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
+    marginTop: 4,
+    maxHeight: 180,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F5F5F5",
+  },
+  suggestionText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: "#2B2B2B",
+  },
+  suggestionUnit: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: "#949FA2",
   },
   row: { flexDirection: 'row' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, backgroundColor: '#F9FAFB', padding: 12, borderRadius: 12 },
