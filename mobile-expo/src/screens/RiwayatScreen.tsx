@@ -16,6 +16,9 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
+// ▼▼▼ FIX: capitalize judul resep di display ▼▼▼
+import { capitalizeEachWord } from "../utils/formatters";
+// ▲▲▲
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
@@ -29,62 +32,55 @@ interface HistoryItem {
 const RiwayatScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { session } = useAuth();
-  
-  // States
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [stats, setStats] = useState({ totalRecipes: 0, totalIngredients: 0 });
 
-  // Fungsi Fetch Data
-const fetchHistoryData = async () => {
-  if (!session?.user?.id) return;
-  
-  try {
-    const { data, error } = await supabase
-      .from("consumption_history")
-      .select(`
-        id,
-        recipe_title,
-        cooked_at,
-        consumption_history_items (id) 
-      `)
-      .eq("user_id", session.user.id)
-      .order("cooked_at", { ascending: false });
+  const fetchHistoryData = async () => {
+    if (!session?.user?.id) return;
 
-    if (error) throw error;
+    try {
+      const { data, error } = await supabase
+        .from("consumption_history")
+        .select(`
+          id,
+          recipe_title,
+          cooked_at,
+          consumption_history_items (id)
+        `)
+        .eq("user_id", session.user.id)
+        .order("cooked_at", { ascending: false });
 
-    // 1. Format data history
-    const formattedHistory = (data || []).map((item: any) => ({
-      id: item.id,
-      recipe_title: item.recipe_title,
-      cooked_at: item.cooked_at,
-      // Menghitung jumlah bahan per resep secara dinamis
-      ingredients_count: item.consumption_history_items?.length || 0
-    }));
+      if (error) throw error;
 
-    // 2. HITUNG STATISTIK SECARA DINAMIS
-    // Menghitung total bahan dari seluruh resep yang pernah dimasak
-    const totalIngredientsUsed = formattedHistory.reduce(
-      (sum, item) => sum + item.ingredients_count, 
-      0
-    );
+      const formattedHistory = (data || []).map((item: any) => ({
+        id: item.id,
+        recipe_title: item.recipe_title,
+        cooked_at: item.cooked_at,
+        ingredients_count: item.consumption_history_items?.length || 0
+      }));
 
-    setHistory(formattedHistory);
-    setStats({
-      totalRecipes: formattedHistory.length,
-      totalIngredients: totalIngredientsUsed // <--- SEKARANG SUDAH DINAMIS
-    });
+      const totalIngredientsUsed = formattedHistory.reduce(
+        (sum, item) => sum + item.ingredients_count,
+        0
+      );
 
-  } catch (error: any) {
-    console.error("Fetch History Error:", error.message);
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
+      setHistory(formattedHistory);
+      setStats({
+        totalRecipes: formattedHistory.length,
+        totalIngredients: totalIngredientsUsed
+      });
 
-  // Auto Refresh saat halaman dibuka
+    } catch (error: any) {
+      console.error("Fetch History Error:", error.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchHistoryData();
@@ -96,7 +92,6 @@ const fetchHistoryData = async () => {
     fetchHistoryData();
   };
 
-  // Helper Format Tanggal
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const months = ["JAN", "FEB", "MAR", "APR", "MEI", "JUN", "JUL", "AGU", "SEP", "OKT", "NOV", "DES"];
@@ -163,7 +158,9 @@ const fetchHistoryData = async () => {
 
                   <View style={styles.timelineCard}>
                     <Text style={styles.cardDate}>{formatDate(item.cooked_at)}</Text>
-                    <Text style={styles.cardName}>{item.recipe_title}</Text>
+                    {/* ▼▼▼ FIX: capitalize recipe title ▼▼▼ */}
+                    <Text style={styles.cardName}>{capitalizeEachWord(item.recipe_title)}</Text>
+                    {/* ▲▲▲ */}
                     <Text style={styles.cardDesc}>
                       Berhasil mengolah {item.ingredients_count} bahan makanan.
                     </Text>
@@ -216,7 +213,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // ── Stat Cards ──
   statRow: {
     flexDirection: "row",
     gap: 12,
@@ -243,7 +239,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.4,
   },
-  // ── Timeline ──
   sectionTitle: {
     fontFamily: "Inter_700Bold",
     fontSize: 22,

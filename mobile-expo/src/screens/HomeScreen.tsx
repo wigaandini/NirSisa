@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,20 +8,20 @@ import {
   Image,
   Platform,
   ActivityIndicator,
-  Alert,
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
-import { supabase } from "../services/supabase"; // Import client supabase Anda
-import axios from "axios";
+import { supabase } from "../services/supabase";
+// ▼▼▼ FIX: pakai api client terpusat + types + formatter ▼▼▼
+import { api, extractApiError } from "../services/api";
+import { RecommendationItem, RecommendationResponse } from "../types/api";
+import { capitalizeEachWord } from "../utils/formatters";
+// ▲▲▲
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
-
-// URL Backend FastAPI Anda (Gunakan IP Lokal, jangan localhost jika tes di HP asli)
-const API_URL = "https://nirsisa-production.up.railway.app";
 
 interface InventoryItem {
   id: string;
@@ -29,25 +29,23 @@ interface InventoryItem {
   quantity: number;
   unit: string;
   days_remaining: number;
-  freshness_status: 'fresh' | 'warning' | 'critical';
+  freshness_status: "fresh" | "warning" | "critical";
 }
 
-interface Recipe {
-  index: number;
-  title: string;
-  total_steps: number;
-  total_ingredients: number;
-  loves: number;
-}
+const normalizeTitle = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
 
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  
+
   // States
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("User");
   const [expiringItems, setExpiringItems] = useState<InventoryItem[]>([]);
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [recipes, setRecipes] = useState<RecommendationItem[]>([]);
   const [totalStock, setTotalStock] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -55,31 +53,50 @@ const HomeScreen: React.FC = () => {
     fetchInitialData();
   }, []);
 
+  // Refresh juga setiap screen Beranda kembali fokus
+  useFocusEffect(
+    useCallback(() => {
+      fetchInitialData();
+    }, [])
+  );
+
   const fetchInitialData = async () => {
     setLoading(true);
+
     try {
       // 1. Ambil User Auth
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        console.log("LOGGED IN USER ID:", user.id); 
-      }
-      if (!user) return;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      // 2. Ambil User Profile (Gunakan Promise.all agar lebih cepat)
+      if (user) {
+        console.log("LOGGED IN USER ID:", user.id);
+      }
+      if (!user) {
+        setRecipes([]);
+        setExpiringItems([]);
+        setTotalStock(0);
+        return;
+      }
+
+      // 2. Ambil User Profile
       const { data: profile } = await supabase
         .from("profiles")
         .select("display_name")
         .eq("id", user.id)
         .single();
-      if (profile) setUserName(profile.display_name);
 
-      // 3. Ambil Total Count Stok terlebih dahulu
+      if (profile?.display_name) {
+        setUserName(profile.display_name);
+      }
+
+      // 3. Ambil Total Count Stok
       const { count } = await supabase
         .from("inventory_stock")
-        .select("*", { count: 'exact', head: true })
+        .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .gt("quantity", 0);
-      
+
       const currentTotal = count || 0;
       setTotalStock(currentTotal);
 
@@ -92,38 +109,63 @@ const HomeScreen: React.FC = () => {
         .order("expiry_date", { ascending: true })
         .limit(3);
 
-      const processedStock = (stock || []).map(item => {
-        const diff = new Date(item.expiry_date).getTime() - new Date().getTime();
-        const days = Math.ceil(diff / (1000 * 3600 * 24));
+      const processedStock = (stock || []).map((item) => {
+        const expiryDate = item.expiry_date ? new Date(item.expiry_date) : null;
+        const now = new Date();
+
+        const days = expiryDate
+          ? Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 3600 * 24))
+          : 9999;
+
         return {
           ...item,
           days_remaining: days,
-          freshness_status: days <= 2 ? 'critical' : days <= 5 ? 'warning' : 'fresh'
+          freshness_status: days <= 2 ? "critical" : days <= 5 ? "warning" : "fresh",
         };
       });
+
       setExpiringItems(processedStock);
 
-      // 5. Ambil Rekomendasi AI (Hanya jika stok ada)
-      if (currentTotal > 0) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-        try {
-            const res = await axios.get(`${API_URL}/recommend?top_k=2`, {
-              headers: { Authorization: `Bearer ${session.access_token}` }
-            });
-            setRecipes(res.data.recommendations || []);
-          } catch (apiError: any) { // Tambahkan : any di sini
-            console.log("AI Recommendation log:", apiError?.message);
-            setRecipes([]); 
-          }
-        }
-      } else {
-        // Pastikan resep kosong jika stok 0
-        setRecipes([]);
+      // 5. Ambil judul resep yang sudah pernah dimasak user
+      const { data: cookedHistory, error: cookedHistoryError } = await supabase
+        .from("consumption_history")
+        .select("recipe_title")
+        .eq("user_id", user.id);
+
+      if (cookedHistoryError) {
+        console.warn("Gagal fetch consumption_history:", cookedHistoryError.message);
       }
 
+      const cookedTitles = new Set(
+        (cookedHistory || [])
+          .map((item: { recipe_title: string | null }) => item.recipe_title)
+          .filter((title): title is string => Boolean(title))
+          .map((title) => normalizeTitle(title))
+      );
+
+      // 6. Ambil Rekomendasi AI (Hanya jika stok ada)
+      if (currentTotal > 0) {
+        try {
+          // Ambil sedikit lebih banyak lalu filter resep yang sudah dimasak
+          const res = await api.get<RecommendationResponse>("/recommend", {
+            params: { top_k: 8 },
+          });
+
+          const recommendations = res.data.recommendations || [];
+
+          const filteredRecommendations = recommendations.filter(
+            (recipe) => !cookedTitles.has(normalizeTitle(recipe.title))
+          );
+
+          setRecipes(filteredRecommendations.slice(0, 2));
+        } catch (apiError) {
+          console.log("AI Recommendation log:", extractApiError(apiError));
+          setRecipes([]);
+        }
+      } else {
+        setRecipes([]);
+      }
     } catch (error: any) {
-      // Tangani error fatal saja (misal masalah koneksi database utama)
       console.error("Fatal Fetch Error:", error);
     } finally {
       setLoading(false);
@@ -137,36 +179,49 @@ const HomeScreen: React.FC = () => {
     return { label: `${days} HARI LAGI`, color: days <= 2 ? "#BB0009" : "#FDCB52" };
   };
 
+  const getCardColors = (days: number) => {
+    if (days <= 2) {
+      return { backgroundColor: "#FEF2F2", borderColor: "#FEE2E2" };
+    }
+    if (days <= 5) {
+      return { backgroundColor: "#FFF8E1", borderColor: "#FDCB52" };
+    }
+    return { backgroundColor: "#DCFCE7", borderColor: "#15803D" };
+  };
+
   if (loading) {
     return (
-      <View style={[styles.flex, { justifyContent: 'center' }]}>
+      <View style={[styles.flex, { justifyContent: "center" }]}>
         <ActivityIndicator size="large" color="#BB0009" />
       </View>
     );
   }
 
   return (
-        <View style={styles.flex}>
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={() => {
-                setRefreshing(true);
-                fetchInitialData();
-              }} 
-              tintColor="#BB0009" 
-            />
-          }
-        >
+    <View style={styles.flex}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchInitialData();
+            }}
+            tintColor="#BB0009"
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifButton} onPress={() => navigation.navigate("Notification")}>
+            <TouchableOpacity
+              style={styles.notifButton}
+              onPress={() => navigation.navigate("Notification")}
+            >
               <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
             </TouchableOpacity>
             <View style={styles.avatar}>
@@ -175,7 +230,7 @@ const HomeScreen: React.FC = () => {
           </View>
         </View>
 
-        <Text style={styles.greeting}>Halo, {userName.split(' ')[0]}!</Text>
+        <Text style={styles.greeting}>Halo, {userName.split(" ")[0]}!</Text>
         <Text style={styles.greetingSub}>
           Kamu punya {expiringItems.length} bahan yang harus kamu perhatikan minggu ini.
         </Text>
@@ -190,14 +245,29 @@ const HomeScreen: React.FC = () => {
 
         {expiringItems.map((item) => {
           const badge = getBadgeInfo(item.days_remaining);
+          const cardColors = getCardColors(item.days_remaining);
+
           return (
-            <TouchableOpacity key={item.id} style={styles.expiryCard}>
+            <TouchableOpacity
+              key={item.id}
+              style={[
+                styles.expiryCard,
+                {
+                  backgroundColor: cardColors.backgroundColor,
+                  borderColor: cardColors.borderColor,
+                },
+              ]}
+              onPress={() => navigation.navigate("Main", { screen: "Stok" })}
+              activeOpacity={0.85}
+            >
               <View style={[styles.expiryBadge, { backgroundColor: badge.color }]}>
                 <Text style={styles.expiryBadgeText}>{badge.label}</Text>
               </View>
               <View style={styles.expiryInfo}>
-                <Text style={styles.expiryName}>{item.item_name}</Text>
-                <Text style={styles.expiryQty}>{item.quantity} {item.unit}</Text>
+                <Text style={styles.expiryName}>{capitalizeEachWord(item.item_name)}</Text>
+                <Text style={styles.expiryQty}>
+                  {item.quantity} {item.unit}
+                </Text>
               </View>
             </TouchableOpacity>
           );
@@ -212,9 +282,22 @@ const HomeScreen: React.FC = () => {
         </View>
 
         {recipes.map((recipe) => (
-          <TouchableOpacity key={recipe.index} style={styles.recipeCard}>
+          <TouchableOpacity
+            key={recipe.index}
+            style={styles.recipeCard}
+            onPress={() =>
+              navigation.navigate("Main", {
+                screen: "ChefAI",
+                params: {
+                  screen: "RecipeDetail",
+                  params: { recipe },
+                },
+              })
+            }
+            activeOpacity={0.85}
+          >
             <Text style={styles.recipeTag}>REKOMENDASI UNTUKMU</Text>
-            <Text style={styles.recipeName}>{recipe.title}</Text>
+            <Text style={styles.recipeName}>{capitalizeEachWord(recipe.title)}</Text>
             <View style={styles.recipeMeta}>
               <View style={styles.recipeMetaItem}>
                 <Ionicons name="list-outline" size={14} color="#656C6E" />
@@ -233,11 +316,15 @@ const HomeScreen: React.FC = () => {
         ))}
 
         {/* Active Stock Banner */}
-        <View style={styles.stockBanner}>
+        <TouchableOpacity
+          style={styles.stockBanner}
+          onPress={() => navigation.navigate("Main", { screen: "Stok" })}
+          activeOpacity={0.85}
+        >
           <Ionicons name="file-tray-full-outline" size={24} color="#FFFFFF" />
           <Text style={styles.stockBannerNumber}>{totalStock}</Text>
           <Text style={styles.stockBannerLabel}>BAHAN AKTIF DI STOK</Text>
-        </View>
+        </TouchableOpacity>
 
         <View style={{ height: 24 }} />
       </ScrollView>
@@ -314,13 +401,11 @@ const styles = StyleSheet.create({
   expiryCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEF2F2",
     borderRadius: 14,
     paddingVertical: 16,
     paddingHorizontal: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#FEE2E2",
   },
   expiryBadge: {
     borderRadius: 8,

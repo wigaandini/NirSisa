@@ -21,6 +21,9 @@ import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+// ▼▼▼ FIX DISPLAY: import formatter untuk capitalize each word ▼▼▼
+import { capitalizeEachWord, formatCategoryLabel } from "../utils/formatters";
+// ▲▲▲
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 const API_URL = "https://nirsisa-production.up.railway.app";
@@ -158,9 +161,43 @@ const StokScreen: React.FC = () => {
     }
   };
 
+  const handleDeleteBahan = (item: InventoryItem) => {
+  Alert.alert(
+    "Hapus Bahan",
+    `Apakah Anda yakin ingin menghapus ${capitalizeEachWord(item.item_name)} dari stok?`,
+    [
+      { text: "Batal", style: "cancel" },
+      { 
+        text: "Hapus", 
+        style: "destructive", 
+        onPress: async () => {
+          try {
+            if (!session?.access_token) return;
+            setLoading(true);
+            
+            // Panggil API Delete ke Railway
+            await axios.delete(`${API_URL}/inventory/${item.id}`, {
+              headers: { Authorization: `Bearer ${session.access_token}` }
+            });
+
+            Alert.alert("Berhasil", "Bahan telah dihapus.");
+            fetchInventory(); // Refresh daftar stok
+          } catch (error: any) {
+            console.error("Delete Error:", error.message);
+            Alert.alert("Gagal", "Gagal menghapus bahan.");
+            setLoading(false);
+          }
+        }
+      }
+    ]
+  );
+};
+
   // --- LOGIKA PEMROSESAN DATA (GROUPING) ---
   const groupedInventory = useMemo(() => {
     // 1. Filter pencarian
+    // Catatan: item.item_name di DB sudah lowercase (hasil normalizer),
+    // jadi kita cukup lowercase searchQuery untuk matching yang konsisten.
     const filtered = inventory.filter(item => 
       (item.item_name || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
@@ -179,17 +216,24 @@ const StokScreen: React.FC = () => {
     return groups;
   }, [inventory, searchQuery]);
 
-  const getStatusDisplay = (status: string, days: number) => {
-    switch (status) {
-      case "expired": // Ubah dari 'critical' ke 'expired' sesuai DB Anda
-        return { label: "EXPIRED", color: "#BB0009" };
-      case "warning": 
-        return { label: `${days} HARI LAGI`, color: "#FDCB52" };      
-      case "fresh": 
-        return { label: "SEGAR", color: "#15803D" };
-      default: 
-        return { label: "CEK FISIK", color: "#949FA2" };
+  const getStatusDisplay = (_status: string, days: number) => {
+    if (days <= 0) {
+      return { label: "EXPIRED", color: "#BB0009" };
     }
+
+    if (days === 1) {
+      return { label: "BESOK", color: "#BB0009" };
+    }
+
+    if (days <= 2) {
+      return { label: `${days} HARI LAGI`, color: "#BB0009" };
+    }
+
+    if (days <= 5) {
+      return { label: `${days} HARI LAGI`, color: "#FDCB52" };
+    }
+
+    return { label: "SEGAR", color: "#15803D" };
   };
 
   return (
@@ -259,7 +303,9 @@ const StokScreen: React.FC = () => {
           Object.keys(groupedInventory).map((categoryName) => (
             <View key={categoryName} style={styles.categorySection}>
               <View style={styles.categoryHeader}>
-                <Text style={styles.categoryTitle}>{categoryName}</Text>
+                {/* ▼▼▼ FIX: capitalize kategori (sayur -> Sayur, daging_sapi -> Daging Sapi) ▼▼▼ */}
+                <Text style={styles.categoryTitle}>{formatCategoryLabel(categoryName)}</Text>
+                {/* ▲▲▲ */}
                 <View style={styles.categoryBadge}>
                   <Text style={styles.categoryBadgeText}>
                     {groupedInventory[categoryName].length} Bahan
@@ -267,23 +313,35 @@ const StokScreen: React.FC = () => {
                 </View>
               </View>
 
-              {groupedInventory[categoryName].map((item) => {
-                const statusInfo = getStatusDisplay(item.freshness_status, item.days_remaining);
-                return (
-                  <TouchableOpacity key={item.id} style={styles.stockCard}>
-                    <View style={[styles.stockCardBorder, { backgroundColor: statusInfo.color }]} />
-                    <View style={styles.stockCardContent}>
-                      <View style={styles.stockCardInfo}>
-                        <Text style={styles.stockItemName}>{item.item_name}</Text>
-                        <Text style={styles.stockItemQty}>{item.quantity} {item.unit}</Text>
-                      </View>
+            {groupedInventory[categoryName].map((item) => {
+              const statusInfo = getStatusDisplay(item.freshness_status, item.days_remaining);
+              return (
+                <TouchableOpacity key={item.id} style={styles.stockCard} activeOpacity={0.7}>
+                  <View style={[styles.stockCardBorder, { backgroundColor: statusInfo.color }]} />
+                  <View style={styles.stockCardContent}>
+                    <View style={styles.stockCardInfo}>
+                      <Text style={styles.stockItemName}>{capitalizeEachWord(item.item_name)}</Text>
+                      <Text style={styles.stockItemQty}>{item.quantity} {item.unit}</Text>
+                    </View>
+                    
+                    {/* Container untuk Badge dan Tombol Hapus */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                       <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
                         <Text style={styles.statusBadgeText}>{statusInfo.label}</Text>
                       </View>
+                      
+                      {/* TOMBOL HAPUS BARU */}
+                      <TouchableOpacity 
+                        onPress={() => handleDeleteBahan(item)}
+                        style={{ padding: 4 }}
+                      >
+                        <Ionicons name="trash-outline" size={20} color="#BB0009" />
+                      </TouchableOpacity>
                     </View>
-                  </TouchableOpacity>
-                );
-              })}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
             </View>
           ))
         )}
@@ -506,6 +564,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 11,
     letterSpacing: 0.3,
+    color: "#FFFFFF",
   },
   emptyState: { alignItems: 'center', marginTop: 40 },
   emptyText: { color: '#949FA2' }

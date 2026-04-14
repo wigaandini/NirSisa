@@ -1,8 +1,14 @@
 import React from "react";
 import { View, StyleSheet, Platform, ActivityIndicator } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import {
+  createNativeStackNavigator,
+  NativeStackScreenProps,
+} from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import {
+  NavigatorScreenParams,
+} from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import LoginScreen from "../screens/LoginScreen";
 import SignUpScreen from "../screens/SignUpScreen";
@@ -13,24 +19,38 @@ import RiwayatScreen from "../screens/RiwayatScreen";
 import RecipeRecommendationScreen from "../screens/RecipeRecommendationScreen";
 import RecipeDetailScreen from "../screens/RecipeDetailScreen";
 import NotificationScreen from "../screens/NotificationScreen";
+// ▼▼▼ FIX: type untuk full recipe object yang dikirim antar screen ▼▼▼
+import { RecommendationItem } from "../types/api";
+// ▲▲▲
+
+export type ChefAIStackParamList = {
+  RecipeRecommendation: undefined;
+  RecipeDetail: { recipe: RecommendationItem };
+};
+
+export type MainTabParamList = {
+  Beranda: undefined;
+  Stok: undefined;
+  ChefAI: NavigatorScreenParams<ChefAIStackParamList> | undefined;
+  Riwayat: undefined;
+  Profil: undefined;
+};
 
 export type RootStackParamList = {
   Login: undefined;
   SignUp: undefined;
-  Main: { screen?: string } | undefined;
+  Main: NavigatorScreenParams<MainTabParamList> | undefined;
   Notification: undefined;
-};
-
-export type ChefAIStackParamList = {
-  RecipeRecommendation: undefined;
-  RecipeDetail: { recipeId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const ChefAIStack = createNativeStackNavigator<ChefAIStackParamList>();
-const Tab = createBottomTabNavigator();
+const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const TAB_ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
+const TAB_ICONS: Record<
+  keyof MainTabParamList,
+  { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }
+> = {
   Beranda: { active: "grid", inactive: "grid-outline" },
   Stok: { active: "file-tray-full", inactive: "file-tray-full-outline" },
   ChefAI: { active: "sparkles", inactive: "sparkles-outline" },

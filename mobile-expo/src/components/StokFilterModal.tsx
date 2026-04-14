@@ -14,25 +14,30 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.78;
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
 
+// --- TYPES ---
 export type SortStok = "expiry" | "name_az" | "quantity";
-export type KategoriStok =
-  | "Sayuran"
-  | "Buah-buahan"
-  | "Produk Jadi dan Olahan"
-  | "Daging & Telur"
-  | "Bumbu & Rempah"
-  | "Minuman"
+
+// Value di sini harus sama persis dengan kolom 'name' di tabel ingredient_categories
+export type KategoriValue =
+  | "sayur"
+  | "buah"
+  | "bahan_olahan"
+  | "daging_sapi"
+  | "daging_ayam"
+  | "dairy"
   | "Lain-lain";
+
 export type StatusStok = "expired" | "warning" | "fresh";
 
 export interface StokFilter {
   sortBy: SortStok | null;
-  kategori: KategoriStok[];
+  kategori: KategoriValue[];
   status: StatusStok[];
 }
 
+// --- CONSTANTS (Label untuk UI, Value untuk Database) ---
 export const DEFAULT_STOK_FILTER: StokFilter = {
   sortBy: null,
   kategori: [],
@@ -45,20 +50,20 @@ const SORT_OPTIONS: { value: SortStok; label: string }[] = [
   { value: "quantity", label: "Jumlah (Tersisa)" },
 ];
 
-const KATEGORI_OPTIONS: KategoriStok[] = [
-  "Sayuran",
-  "Buah-buahan",
-  "Produk Jadi dan Olahan",
-  "Daging & Telur",
-  "Bumbu & Rempah",
-  "Minuman",
-  "Lain-lain",
+const KATEGORI_OPTIONS: { label: string; value: KategoriValue }[] = [
+  { label: "Sayuran", value: "sayur" },
+  { label: "Buah-buahan", value: "buah" },
+  { label: "Produk Jadi", value: "bahan_olahan" },
+  { label: "Daging Sapi", value: "daging_sapi" },
+  { label: "Daging Ayam", value: "daging_ayam" },
+  { label: "Minuman/Susu", value: "dairy" },
+  { label: "Lain-lain", value: "Lain-lain" },
 ];
 
-const STATUS_OPTIONS: { value: StatusStok; label: string }[] = [
-  { value: "expired", label: "Segera Kadaluwarsa" },
-  { value: "warning", label: "Mendekati Kedaluwarsa" },
-  { value: "fresh", label: "Segar" },
+const STATUS_OPTIONS: { label: string; value: StatusStok }[] = [
+  { label: "Segera Kadaluwarsa", value: "expired" },
+  { label: "Mendekati Kadaluwarsa", value: "warning" },
+  { label: "Segar", value: "fresh" },
 ];
 
 interface StokFilterModalProps {
@@ -77,45 +82,31 @@ const StokFilterModal: React.FC<StokFilterModalProps> = ({
   const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
 
+  // State lokal untuk menampung pilihan sebelum di-Apply
   const [sortBy, setSortBy] = useState<SortStok | null>(initialFilter.sortBy);
-  const [kategori, setKategori] = useState<KategoriStok[]>(initialFilter.kategori);
+  const [kategori, setKategori] = useState<KategoriValue[]>(initialFilter.kategori);
   const [status, setStatus] = useState<StatusStok[]>(initialFilter.status);
 
   useEffect(() => {
     if (visible) {
+      // Sinkronkan state lokal dengan filter yang sedang aktif saat modal dibuka
       setSortBy(initialFilter.sortBy);
       setKategori(initialFilter.kategori);
       setStatus(initialFilter.status);
+
       Animated.parallel([
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          useNativeDriver: true,
-          damping: 20,
-          stiffness: 200,
-        }),
-        Animated.timing(backdropAnim, {
-          toValue: 1,
-          duration: 250,
-          useNativeDriver: true,
-        }),
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200 }),
+        Animated.timing(backdropAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
       ]).start();
     } else {
       Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: SHEET_HEIGHT,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropAnim, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: true,
-        }),
+        Animated.timing(slideAnim, { toValue: SHEET_HEIGHT, duration: 220, useNativeDriver: true }),
+        Animated.timing(backdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
       ]).start();
     }
   }, [visible]);
 
-  const toggleKategori = (val: KategoriStok) => {
+  const toggleKategori = (val: KategoriValue) => {
     setKategori((prev) =>
       prev.includes(val) ? prev.filter((k) => k !== val) : [...prev, val]
     );
@@ -133,33 +124,24 @@ const StokFilterModal: React.FC<StokFilterModalProps> = ({
   };
 
   const handleReset = () => {
+    setSortBy(null);
+    setKategori([]);
+    setStatus([]);
     onApply(DEFAULT_STOK_FILTER);
     onClose();
   };
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
-      {/* Backdrop */}
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View
-          style={[
-            styles.backdrop,
-            {
-              opacity: backdropAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, 0.45],
-              }),
-            },
-          ]}
+          style={[styles.backdrop, { opacity: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }) }]}
         />
       </TouchableWithoutFeedback>
 
-      {/* Sheet */}
       <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}>
-        {/* Drag Handle */}
         <View style={styles.dragHandle} />
 
-        {/* Header */}
         <View style={styles.sheetHeader}>
           <Text style={styles.sheetTitle}>Filter & Urutkan</Text>
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
@@ -168,82 +150,74 @@ const StokFilterModal: React.FC<StokFilterModalProps> = ({
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-          {/* ── Urutkan Berdasarkan ── */}
+          {/* ── Urutkan Berdasarkan (Radio Button style) ── */}
           <Text style={styles.sectionLabel}>URUTKAN BERDASARKAN</Text>
           {SORT_OPTIONS.map((opt) => {
-            const selected = sortBy === opt.value;
+            const isSelected = sortBy === opt.value;
             return (
               <TouchableOpacity
                 key={opt.value}
-                style={[styles.radioRow, selected && styles.radioRowSelected]}
-                onPress={() => setSortBy(sortBy === opt.value ? null : opt.value)}
-                activeOpacity={0.7}
+                style={[styles.radioRow, isSelected && styles.radioRowSelected]}
+                onPress={() => setSortBy(isSelected ? null : opt.value)}
               >
-                <Text style={[styles.radioLabel, selected && styles.radioLabelSelected]}>
+                <Text style={[styles.radioLabel, isSelected && styles.radioLabelSelected]}>
                   {opt.label}
                 </Text>
-                <View style={[styles.radioCircle, selected && styles.radioCircleSelected]}>
-                  {selected && <View style={styles.radioInner} />}
+                <View style={[styles.radioCircle, isSelected && styles.radioCircleSelected]}>
+                  {isSelected && <View style={styles.radioInner} />}
                 </View>
               </TouchableOpacity>
             );
           })}
 
-          {/* ── Kategori ── */}
+          {/* ── Kategori (Multi-select Chips) ── */}
           <Text style={[styles.sectionLabel, { marginTop: 24 }]}>KATEGORI</Text>
           <View style={styles.chipRow}>
             {KATEGORI_OPTIONS.map((opt) => {
-              const selected = kategori.includes(opt);
-              return (
-                <TouchableOpacity
-                  key={opt}
-                  style={[styles.chip, selected && styles.chipSelected]}
-                  onPress={() => toggleKategori(opt)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                    {opt}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* ── Status ── */}
-          <Text style={[styles.sectionLabel, { marginTop: 24 }]}>STATUS</Text>
-          <View style={styles.chipRow}>
-            {STATUS_OPTIONS.map((opt) => {
-              const selected = status.includes(opt.value); // Cek berdasarkan value
+              const isSelected = kategori.includes(opt.value);
               return (
                 <TouchableOpacity
                   key={opt.value}
-                  style={[styles.chip, selected && styles.chipSelected]}
-                  onPress={() => {
-                    // Logic toggle
-                    setStatus((prev) =>
-                      prev.includes(opt.value) ? prev.filter((s) => s !== opt.value) : [...prev, opt.value]
-                    );
-                  }}
-                  activeOpacity={0.7}
+                  style={[styles.chip, isSelected && styles.chipSelected]}
+                  onPress={() => toggleKategori(opt.value)}
                 >
-                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                    {opt.label} {/* Tampilkan label bahasa Indonesia */}
+                  <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+                    {opt.label}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          {/* ── Actions ── */}
-          <TouchableOpacity style={styles.applyButton} onPress={handleApply} activeOpacity={0.85}>
+          {/* ── Status (Multi-select Chips) ── */}
+          <Text style={[styles.sectionLabel, { marginTop: 24 }]}>STATUS</Text>
+          <View style={styles.chipRow}>
+            {STATUS_OPTIONS.map((opt) => {
+              const isSelected = status.includes(opt.value);
+              return (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.chip, isSelected && styles.chipSelected]}
+                  onPress={() => toggleStatus(opt.value)}
+                >
+                  <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* ── Tombol Aksi ── */}
+          <TouchableOpacity style={styles.applyButton} onPress={handleApply}>
             <Text style={styles.applyButtonText}>Terapkan Filter</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.resetButton} onPress={handleReset}>
-            <Text style={styles.resetButtonText}>Hapus Filter</Text>
+            <Text style={styles.resetButtonText}>Hapus Semua Filter</Text>
           </TouchableOpacity>
 
-          <View style={{ height: Platform.OS === "ios" ? 32 : 16 }} />
+          <View style={{ height: Platform.OS === "ios" ? 40 : 20 }} />
         </ScrollView>
       </Animated.View>
     </Modal>

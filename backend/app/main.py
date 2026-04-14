@@ -42,14 +42,6 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("=== NirSisa Backend Shutting Down ===")
 
-# --- LEGACY SCHEMAS (Untuk POST /recommend) ---
-class IngredientItemLegacy(BaseModel):
-    name: str
-    days_left: int
-
-class RecommendRequestLegacy(BaseModel):
-    ingredients: List[IngredientItemLegacy]
-
 # --- APP FACTORY ---
 def create_app() -> FastAPI:
     settings = get_settings()
@@ -106,23 +98,23 @@ def create_app() -> FastAPI:
             "engine": "Modular AI Engine Active"
         }
 
-    @app.post("/recommend", tags=["Legacy"])
-    def recommend_legacy(request: RecommendRequestLegacy):
-        """
-        Endpoint legacy tetap jalan, tapi sekarang memanggil 
-        logic dari app.ai.recommender agar efisien.
-        """
-        try:
-            # Map request manual ke format modul AI
-            inventory = [
-                InventoryItem(name=item.name, days_remaining=item.days_left)
-                for item in request.ingredients
-            ]
+    # @app.post("/recommend", tags=["Legacy"])
+    # def recommend_legacy(request: RecommendRequestLegacy):
+    #     """
+    #     Endpoint legacy tetap jalan, tapi sekarang memanggil 
+    #     logic dari app.ai.recommender agar efisien.
+    #     """
+    #     try:
+    #         # Map request manual ke format modul AI
+    #         inventory = [
+    #             InventoryItem(name=item.name, days_remaining=item.days_left)
+    #             for item in request.ingredients
+    #         ]
             
-            result = get_recommendations(inventory=inventory, top_k=10)
-            return {"recommendations": result.recipes}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+    #         result = get_recommendations(inventory=inventory, top_k=10)
+    #         return {"recommendations": result.recipes}
+    #     except Exception as e:
+    #         raise HTTPException(status_code=500, detail=str(e))
 
     return app
 

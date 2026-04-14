@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,21 +8,41 @@ import {
   Image,
   TextInput,
   Platform,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ChefAIStackParamList, RootStackParamList } from "../navigation/AppNavigator";
 import FilterModal, { DEFAULT_FILTER, FilterState, RangeOption } from "../components/FilterModal";
-import { RECIPES, Recipe, RecipeStatus } from "../data/recipes";
+// ▼▼▼ FIX: ganti dummy data ke API client + types ▼▼▼
+import { api, extractApiError } from "../services/api";
+import { RecommendationItem, RecommendationResponse } from "../types/api";
+import { capitalizeEachWord } from "../utils/formatters";
+// ▲▲▲
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
 type Props = NativeStackScreenProps<ChefAIStackParamList, "RecipeRecommendation">;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STATUS DERIVATION
+// Sebelumnya pakai dummy `recipe.status`. Sekarang derive dari spi_score yang
+// sudah dihitung backend. Threshold di-tune supaya konsisten dengan freshness
+// status di backend (spi.py).
+// ─────────────────────────────────────────────────────────────────────────────
+type DerivedStatus = "expired_soon" | "approaching" | "fresh";
+
+const deriveStatus = (item: RecommendationItem): DerivedStatus => {
+  if (item.spi_score >= 0.5) return "expired_soon";
+  if (item.spi_score >= 0.15) return "approaching";
+  return "fresh";
+};
+
 const STATUS_CONFIG: Record<
-  RecipeStatus,
+  DerivedStatus,
   { label: string; badgeColor: string; borderColor: string; bgColor: string }
 > = {
   expired_soon: {
@@ -53,22 +73,26 @@ function matchesRange(value: number, range: RangeOption | null): boolean {
   return true;
 }
 
-function applyFilter(recipes: Recipe[], filter: FilterState, search: string): Recipe[] {
+function applyFilter(
+  recipes: RecommendationItem[],
+  filter: FilterState,
+  search: string
+): RecommendationItem[] {
   let result = recipes.filter((r) => {
-    const matchesSearch = r.name.toLowerCase().includes(search.toLowerCase());
-    const matchesSteps = matchesRange(r.steps, filter.stepsRange);
-    const matchesIngredients = matchesRange(r.ingredients, filter.ingredientsRange);
+    const matchesSearch = r.title.toLowerCase().includes(search.toLowerCase());
+    const matchesSteps = matchesRange(r.total_steps, filter.stepsRange);
+    const matchesIngredients = matchesRange(r.total_ingredients, filter.ingredientsRange);
     return matchesSearch && matchesSteps && matchesIngredients;
   });
 
   if (filter.sortBy === "fastest_steps") {
-    result = [...result].sort((a, b) => a.steps - b.steps);
+    result = [...result].sort((a, b) => a.total_steps - b.total_steps);
   } else if (filter.sortBy === "min_ingredients") {
-    result = [...result].sort((a, b) => a.ingredients - b.ingredients);
+    result = [...result].sort((a, b) => a.total_ingredients - b.total_ingredients);
   } else if (filter.sortBy === "most_popular") {
-    result = [...result].sort((a, b) => b.likes - a.likes);
+    result = [...result].sort((a, b) => b.loves - a.loves);
   }
-
+  // Default: tetap urut sesuai final_score dari backend (sudah re-ranked oleh SPI)
   return result;
 }
 
@@ -86,7 +110,51 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
   const [filterVisible, setFilterVisible] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterState>(DEFAULT_FILTER);
 
-  const filteredRecipes = applyFilter(RECIPES, activeFilter, search);
+  // ▼▼▼ FIX: state untuk hasil API ▼▼▼
+  const [recipes, setRecipes] = useState<RecommendationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [meta, setMeta] = useState<{ latencyMs: number; spiWeight: number } | null>(null);
+
+  const fetchRecommendations = useCallback(async () => {
+    try {
+      setErrorMsg(null);
+      const res = await api.get<RecommendationResponse>("/recommend", {
+        params: { top_k: 20 },
+      });
+      setRecipes(res.data.recommendations || []);
+      setMeta({ latencyMs: res.data.latency_ms, spiWeight: res.data.spi_weight });
+    } catch (err) {
+      const msg = extractApiError(err);
+      console.warn("[RecipeRecommendation] fetch error:", msg);
+      // 400 dari backend = inventaris kosong → tampilkan empty state, bukan error
+      if (msg.toLowerCase().includes("inventaris kosong")) {
+        setRecipes([]);
+        setErrorMsg("Stok bahan kosong. Tambahkan bahan di tab Stok dulu.");
+      } else {
+        setErrorMsg(msg);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Auto-refresh saat halaman dibuka (mis. setelah user nambah bahan baru)
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      fetchRecommendations();
+    }, [fetchRecommendations])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchRecommendations();
+  };
+
+  const filteredRecipes = applyFilter(recipes, activeFilter, search);
   const filterActive = isFilterActive(activeFilter);
 
   return (
@@ -96,6 +164,9 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BB0009" />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
@@ -115,6 +186,16 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
         <Text style={styles.subtitle}>
           Pilihan cerdas untuk kurangi sisa makanan hari ini.
         </Text>
+
+        {/* Meta info dari AI engine */}
+        {meta && !loading && recipes.length > 0 && (
+          <View style={styles.metaBanner}>
+            <Ionicons name="sparkles" size={12} color="#BB0009" />
+            <Text style={styles.metaBannerText}>
+              {recipes.length} resep • {meta.latencyMs.toFixed(0)}ms • SPI weight {meta.spiWeight}
+            </Text>
+          </View>
+        )}
 
         {/* Search Bar */}
         <View style={styles.searchRow}>
@@ -155,53 +236,81 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
 
-        {/* Recipe Cards */}
-        {filteredRecipes.length === 0 ? (
+        {/* Loading / Error / Empty / Cards */}
+        {loading ? (
+          <ActivityIndicator size="large" color="#BB0009" style={{ marginTop: 40 }} />
+        ) : errorMsg ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="alert-circle-outline" size={40} color="#BFD3D6" />
+            <Text style={styles.emptyText}>{errorMsg}</Text>
+          </View>
+        ) : filteredRecipes.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="search-outline" size={40} color="#BFD3D6" />
             <Text style={styles.emptyText}>Tidak ada menu yang ditemukan</Text>
           </View>
         ) : (
           filteredRecipes.map((recipe) => {
-            const config = STATUS_CONFIG[recipe.status];
+            const status = deriveStatus(recipe);
+            const config = STATUS_CONFIG[status];
             return (
               <TouchableOpacity
-                key={recipe.id}
+                key={recipe.index}
                 style={[
                   styles.recipeCard,
                   { borderLeftColor: config.borderColor, backgroundColor: config.bgColor },
                 ]}
                 activeOpacity={0.75}
-                onPress={() => navigation.navigate("RecipeDetail", { recipeId: recipe.id })}
+                // ▼▼▼ FIX: pass full recipe object via params ▼▼▼
+                onPress={() => navigation.navigate("RecipeDetail", { recipe })}
+                // ▲▲▲
               >
                 {/* Status Badge */}
                 <View style={[styles.statusBadge, { backgroundColor: config.badgeColor }]}>
                   <Text style={styles.statusBadgeText}>{config.label}</Text>
                 </View>
 
-                {/* Recipe Name */}
-                <Text style={styles.recipeName}>{recipe.name}</Text>
+                {/* Recipe Name (capitalized) */}
+                <Text style={styles.recipeName}>{capitalizeEachWord(recipe.title)}</Text>
 
-                {/* Description */}
+                {/* Match percentage + explanation */}
                 <Text style={styles.recipeDescription} numberOfLines={2}>
-                  {recipe.description}
+                  {recipe.explanation || `${recipe.match_percentage.toFixed(0)}% bahan Anda cocok dengan resep ini.`}
                 </Text>
+
+                {/* Score breakdown (XAI) */}
+                <View style={styles.scoreRow}>
+                  <View style={styles.scorePill}>
+                    <Text style={styles.scorePillLabel}>COSINE</Text>
+                    <Text style={styles.scorePillValue}>{(recipe.cosine_score * 100).toFixed(0)}%</Text>
+                  </View>
+                  <View style={styles.scorePill}>
+                    <Text style={styles.scorePillLabel}>SPI</Text>
+                    <Text style={styles.scorePillValue}>{(recipe.spi_score * 100).toFixed(0)}%</Text>
+                  </View>
+                  <View style={[styles.scorePill, styles.scorePillFinal]}>
+                    <Text style={[styles.scorePillLabel, { color: "#BB0009" }]}>FINAL</Text>
+                    <Text style={[styles.scorePillValue, { color: "#BB0009" }]}>
+                      {(recipe.final_score * 100).toFixed(0)}%
+                    </Text>
+                  </View>
+                </View>
 
                 {/* Meta Row */}
                 <View style={styles.metaRow}>
                   <View style={styles.metaItem}>
                     <Ionicons name="list-outline" size={14} color="#656C6E" />
-                    <Text style={styles.metaText}>{recipe.steps} Tahap</Text>
+                    <Text style={styles.metaText}>{recipe.total_steps} Tahap</Text>
                   </View>
                   <View style={styles.metaDivider} />
                   <View style={styles.metaItem}>
                     <Ionicons name="cube-outline" size={14} color="#656C6E" />
-                    <Text style={styles.metaText}>{recipe.ingredients} Bahan</Text>
+                    <Text style={styles.metaText}>{recipe.total_ingredients} Bahan</Text>
                   </View>
                   <View style={styles.metaDivider} />
                   <View style={styles.metaItem}>
                     <Ionicons name="heart" size={14} color="#BB0009" />
-                    <Text style={styles.metaText}>{recipe.likes} Suka</Text>
+                    <Text style={styles.metaText}>{recipe.loves} Suka</Text>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -270,7 +379,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#656C6E",
     lineHeight: 20,
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  metaBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignSelf: "flex-start",
+  },
+  metaBannerText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: "#BB0009",
+    letterSpacing: 0.3,
   },
   searchRow: {
     flexDirection: "row",
@@ -364,6 +490,36 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 12,
   },
+  scoreRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  scorePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  scorePillFinal: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#FEE2E2",
+  },
+  scorePillLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    color: "#949FA2",
+    letterSpacing: 0.3,
+  },
+  scorePillValue: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: "#2B2B2B",
+  },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -393,6 +549,8 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 14,
     color: "#949FA2",
+    textAlign: "center",
+    paddingHorizontal: 24,
   },
 });
 

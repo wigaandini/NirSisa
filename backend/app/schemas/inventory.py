@@ -1,15 +1,14 @@
-# Pydantic schemas untuk Inventory endpoints
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Optional, List, Dict # Pastikan import dari typing, bukan pyparsing
+from typing import List
 
 from pydantic import BaseModel, Field
 
 
 # Input schemas
 class InventoryItemCreate(BaseModel):
-    # Schema untuk menambah bahan baru ke inventaris 
+    # Schema untuk menambah bahan baru ke inventaris
     item_name: str = Field(..., min_length=1, max_length=150, examples=["Bayam"])
     quantity: float = Field(default=1, gt=0, examples=[2.0])
     unit: str = Field(default="buah", max_length=30, examples=["ikat"])
@@ -18,17 +17,16 @@ class InventoryItemCreate(BaseModel):
         default=False,
         description="True untuk bahan alami (sayur, daging, buah) agar sistem mengestimasi kedaluwarsa otomatis.",
     )
-    # PENTING: Tambahkan ini agar kategori dari HP bisa diterima saat POST
     category_name: str | None = Field(default=None, examples=["Sayuran"])
 
 
 class InventoryItemUpdate(BaseModel):
-    # Schema untuk memperbarui bahan (partial update) 
+    # Schema untuk memperbarui bahan (partial update)
     item_name: str | None = Field(default=None, max_length=150)
     quantity: float | None = Field(default=None, gt=0)
     unit: str | None = Field(default=None, max_length=30)
     expiry_date: date | None = None
-    category_name: str | None = None 
+    category_name: str | None = None
 
 
 # Output schemas
@@ -52,22 +50,36 @@ class InventoryItemResponse(BaseModel):
 
 # Reconciliation schemas
 class IngredientUsage(BaseModel):
-    # Satu bahan yang digunakan saat memasak 
+    # Satu bahan yang digunakan saat memasak
     item_id: str = Field(..., description="UUID bahan di inventory_stock")
     quantity_used: float = Field(..., gt=0, description="Jumlah yang dipakai")
 
 
 class ReconciliationRequest(BaseModel):
-    # Request body untuk konfirmasi selesai masak 
-    recipe_id: int = Field(..., description="ID resep yang dimasak")
+    """
+    Request body untuk konfirmasi selesai masak.
+
+    PERUBAHAN:
+    - recipe_id tetap optional
+    - ingredients_used sekarang BOLEH kosong
+      karena user tetap bisa konfirmasi masak walau tidak semua bahan di stok
+      cocok / tervalidasi untuk auto-deduction.
+    - Jika kosong, backend hanya mencatat riwayat masak tanpa mengurangi stok.
+    """
+
+    recipe_id: int | None = Field(
+        default=None,
+        description="ID resep di tabel `recipes` (optional). None kalau tidak diketahui.",
+    )
     recipe_title: str = Field(..., min_length=1, max_length=300)
     ingredients_used: List[IngredientUsage] = Field(
-        ..., min_length=1, description="Daftar bahan yang digunakan beserta jumlahnya"
+        default_factory=list,
+        description="Daftar bahan yang benar-benar akan dikurangi dari stok. Boleh kosong jika hanya ingin simpan riwayat memasak tanpa auto-deduction.",
     )
 
 
 class ReconciliationResponse(BaseModel):
-    # Response setelah reconciliation berhasil 
+    # Response setelah reconciliation berhasil
     status: str
     recipe_title: str
     items_updated: List[dict] = []
