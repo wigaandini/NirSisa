@@ -71,7 +71,7 @@ class RecipeKnowledgeBase:
         self.tfidf_matrix = joblib.load(matrix_file)
 
         logger.info("Loading recipe dataframe dari %s", data_file)
-        self.df_recipes = pd.read_pickle(data_file)
+        self.df_recipes = joblib.load(data_file)
         # Pastikan kolom kunci tidak NaN
         self.df_recipes["Ingredients Cleaned"] = (
             self.df_recipes["Ingredients Cleaned"].fillna("")
