@@ -1,11 +1,11 @@
 """
-TF-IDF Vectorization Pipeline v2
+TF-IDF Vectorization Pipeline v3
 =================================
-Reads cleaned CSV (v2), builds TF-IDF model, saves artifacts locally
+Reads cleaned CSV (v3), builds TF-IDF model, saves artifacts locally
 and syncs to Supabase.
 
-Data source: Indonesian_Food_Recipes_Cleaned_v2.csv (local)
-Model version: v2.0
+Data source: Indonesian_Food_Recipes_Cleaned_v3.csv (local)
+Model version: v3.0
 
 Usage: python vectorize_recipes.py
 """
@@ -34,7 +34,7 @@ except ImportError:
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-MODEL_VERSION = "v2.0"
+MODEL_VERSION = "v3.0"
 TFIDF_MAX_FEATURES = 5000
 TFIDF_NGRAM_RANGE = (1, 2)
 TFIDF_SUBLINEAR_TF = True
@@ -49,7 +49,7 @@ _DB_DIR = _SEED_DIR.parent                             # database/
 _ROOT_DIR = _DB_DIR.parent                             # NirSisa/
 _EDA_DIR = _ROOT_DIR / "EDA Dataset"
 
-CSV_PATH = _EDA_DIR / "Indonesian_Food_Recipes_Cleaned_v2.csv"
+CSV_PATH = _EDA_DIR / "Indonesian_Food_Recipes_Cleaned_v3.csv"
 ARTIFACT_DIR = _DB_DIR / "artifacts"
 ML_MODEL_DIR = _ROOT_DIR / "backend" / "app" / "ml_models"
 DATA_DIR = _ROOT_DIR / "backend" / "app" / "data"
@@ -347,7 +347,7 @@ def main():
     # Step 4
     supabase = get_supabase()
     sync_tfidf_cache(supabase, vectorizer, tfidf_matrix, df)
-    sync_recipes_table(supabase, df)
+    # NOTE: recipes.ingredients_cleaned already synced via update_recipes_v3.py
 
     print("\n" + "=" * 60)
     print("Pipeline complete!")

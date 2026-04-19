@@ -27,7 +27,6 @@ ALIAS_MAP: dict[str, str] = {
     "cabe": "cabai",
     "lombok merah": "cabai merah",
     "lombok": "cabai",
-    "rawit": "cabai rawit",
     "cabai setan": "cabai rawit",
     # egg
     "telor ayam": "telur ayam",
@@ -101,26 +100,39 @@ PREP_WORDS: list[str] = [
     "dimasak", "dichopper", "dioven", "dipanggang", "dimarinasi",
     "dilumuri", "diungkep", "dipresto", "dibuang", "dibersihkan",
     "disuwir", "dipipihkan", "dipenyet", "difillet",
-    # -kan forms
-    "haluskan", "memarkan", "tumiskan", "campurkan",
+    "dipisah", "disisihkan", "disuir", "dimarinade",
+    # menV- active forms
+    "menggoreng", "merebus", "menumis", "membakar", "memanggang",
+    "mengaduk", "menabur", "menyiram", "menuang", "mengolesi",
+    "mengupas", "mencuci", "melumuri", "menghaluskan",
+    # -kan / tambahan forms
+    "haluskan", "memarkan", "tumiskan", "campurkan", "tambahkan",
+    "sisihkan", "olesi", "lumuri", "marinade", "marinasi",
     # base forms
     "sangrai", "bakar", "kukus", "goreng", "rebus",
     "rajang", "cincang", "geprek", "kupas", "cuci",
     "potong", "iris", "serong", "tipis", "kasar", "dadu",
     "halus", "parut", "ulek", "jari", "panggang",
     "tumis", "blender", "mixer", "oven", "presto",
-    "suwir", "cacah", "sobek", "belah",
+    "suwir", "suir", "cacah", "sobek", "belah",
+    "tambah", "campur", "siram", "tabur", "tuang", "aduk", "pisah",
+    "rebusan", "tumisan", "gorengan",
     # descriptors
     "kecil", "besar", "sedang", "utuh", "segar", "bersih", "bersihkan",
     "matang", "mentah", "empuk", "lembut", "wangi", "enak",
     "kating",  # bawang putih kating = just bawang putih
-    "bersh", "bersiih", "bersihin", "bersihkan", "bersihkn",  # typos/variants of bersih
+    "bersh", "bersiih", "bersihin", "bersihkan", "bersihkn",  # typos
     "pengempuk",  # "pengempuk daging" = tenderizer
     "harum", "wanginya",
     # size/shape descriptors
-    "korek api", "ukuran",
+    "korek api", "ukuran", "ukurang", "berukuran", "berukurang", "seukuran",
     # remnants
-    "jumbo", "super", "original",
+    "jumbo", "super", "original", "premium", "deluxe", "royal",
+    # buang biji / buang tulang etc.
+    "buang biji", "buang tulang", "buang kulit", "buang kepala",
+    "buang akar", "buang bagian", "ambil bagian",
+    # truncated common
+    "ny", "kny", "gny", "kn", "an", "yg",
 ]
 
 # Abbreviation → expansion (applied as substring replacement)
@@ -175,8 +187,27 @@ UK_NOISE = re.compile(r"(?<!\w)uk(?!\w)")
 
 VAGUE_QTY: list[str] = [
     "secukupnya", "sesuai selera", "sejumput", "segenggam",
-    "kira-kira", "secukup nya", "kurang lebih", "munjung",
-    "sedikit", "sebanyaknya",
+    "kira-kira", "kira kira", "secukup nya", "kurang lebih", "munjung",
+    "sedikit", "sebanyaknya", "secukup ny", "secukupna",
+    "secukupny", "secukupnyaa", "secukupnya", "scukupnya", "scukup",
+    "sckpny", "sckpnya", "sckp", "secukupx", "secukupa",
+    "kurleb", "krg lbh", "krg lbih", "kurleb cc",
+    "sesuai keperluan", "sesuai kebutuhan", "sesuai takaran",
+    "sesuai rasa", "sesuai serela", "sesuai selerah", "sesuai selera",
+    "sesuai serat", "sesuai slra", "seseuai selera", "selerah",
+    "ikut selera", "selera", "slera", "sesuaii",
+    "kira", "sekitar", "sekitarnya", "kirakira", "kira²", "kira\"",
+    "agak banyak", "rada banyakan", "agak", "rada",
+    "bila suka", "bila perlu", "boleh tambah", "boleh skip",
+    "bisa skip", "bisa di skip", "boleh kurang", "boleh lebih",
+    "boleh tidak", "saya skip", "aku skip", "sy skip", "skip",
+    "mama suka", "papa suka", "mom",
+    "berukurang", "berukuran", "seukuran", "ukurang",
+    # secukupnya bare-stem and typos
+    "secukup", "secukupy", "secukupx", "secukupmya", "secukupya",
+    "secukupnyq", "secukupnua", "secukupnga", "secukupmya",
+    "secukupnny", "secukupnyal", "secukup mya", "secukup ny",
+    "secukup nya", "secukup rasa", "sckpx", "secukupya",
 ]
 
 PERSONAL_COMMENT_PHRASES: list[str] = [
@@ -199,6 +230,11 @@ PERSONAL_COMMENT_PHRASES: list[str] = [
     "d fillet", "di fillet",
     "jangan", "lebih enak", "lebih gurih", "lebih nikmat",
     "tergantung", "terserah",
+    # bare personal pronouns mid-token (truncate to keep ingredient before)
+    " saya", " aku", " aq", " ku ", " sy ", " gw ",
+    " mama", " papa", " mom", " ibu",
+    " brand", " merk", " merek",
+    " tambahan dari", " disini pakai",
 ]
 
 SECTION_HEADERS: set[str] = {
@@ -206,6 +242,37 @@ SECTION_HEADERS: set[str] = {
     "bumbu dihaluskan", "tambahan", "bahan pelengkap",
     "topping", "hiasan", "garnish", "sesuaikan",
     "sambal", "olesan", "cocolan", "adonan", "isian",
+    "bumbu penyedap", "bahan saus", "bahan tambahan", "bahan sambal",
+    "bahan utama", "bumbu lainnya", "kuah", "saus", "saos",
+}
+
+# Whitelist of legit "bumbu X" / "bahan X" / "sambal X" / "saus X" patterns.
+# If a token starts with section header word but matches one of these, KEEP it.
+SECTION_HEADER_WHITELIST: set[str] = {
+    "bumbu kari", "bumbu rendang", "bumbu sate", "bumbu opor",
+    "bumbu rujak", "bumbu pecel", "bumbu bali", "bumbu rawon",
+    "bumbu soto", "bumbu nasi goreng", "bumbu marinasi",
+    "bumbu mie ayam", "bumbu kering", "bumbu instant",
+    "bumbu instan", "bumbu ayam", "bumbu sayur", "bumbu tabur",
+    "bumbu gulai", "bumbu spaghetti", "bumbu nasi",
+    "bumbu spagetti", "bumbu rica", "bumbu ungkep",
+    "sambal goreng", "sambal teri", "sambal terasi",
+    "sambal kecap", "sambal matah", "sambal hijau",
+    "sambal bawang", "sambal rawit", "sambal tomat",
+    "sambal cabai", "sambal cabai rawit", "sambal kacang",
+    "sambal kecap manis", "sambal bangkok", "sambal pecel",
+    "sambal korek", "sambal soto", "sambal balado",
+    "sambal bajak", "sambal jeruk nipis", "sambal kecap rawit",
+    "sambal cabai garam", "sambal bacang", "sambal ijo",
+    "sambal uleg", "sambal asam", "sambal tauco",
+    "bumbu ungkep", "bumbu kaldu", "bumbu masak",
+    "bumbu jamur", "bumbu opor", "bumbu balado",
+    "saus tiram", "saus tomat", "saus sambal", "saus teriyaki",
+    "saus cabai", "saus pedas", "saus inggris", "saus bbq",
+    "saus mentai", "saus tartar", "saus blackpepper",
+    "saus asam manis", "saus padang",
+    "kuah santan", "kuah kari", "kuah opor",
+    "isian risoles", "adonan kulit",
 }
 
 SECTION_HEADER_PATTERNS: list[str] = [
@@ -219,13 +286,33 @@ SECTION_HEADER_PATTERNS: list[str] = [
 
 BRAND_MAP: dict[str, str] = {
     "santan kara": "santan", "santan instant": "santan",
+    "santan instan": "santan",
     "kecap bango": "kecap manis", "kecap abc": "kecap manis",
+    "kecap sedap": "kecap manis", "kecap blackbold": "kecap manis",
     "ro*co": "", "m***ko": "", "r*y*o": "",
     "royco": "", "masako": "", "royko": "",
     "kara": "santan", "bango": "kecap manis", "abc": "kecap manis",
     "saori": "saus tiram", "sajiku": "", "ladaku": "lada",
     "sasa": "", "indofood": "", "maggi": "", "maggy": "",
     "sariwangi": "", "tropicana slim": "", "tropicana": "",
+    "indomie": "mie instan", "mie indomie": "mie instan",
+    "bgks indomie": "mie instan", "indomie rasa": "mie instan",
+    "knorr": "kaldu bubuk", "blok knorr": "kaldu bubuk",
+    "keju kraft": "keju", "kraft": "keju",
+    "saus bbq delmonte": "saus bbq", "delmonte": "",
+    "tepung beras rose brand": "tepung beras",
+    "rose brand": "", "champ": "", "bernadhi": "",
+    "merk": "", "merek": "",
+    "minyak samin merk onta": "minyak samin", "onta": "",
+    "ezzo": "", "delfi": "", "hokben": "",
+    "kewpie": "", "ultra": "", "heinz": "",
+    "nestle": "", "nutrijell": "agar-agar",
+    "kfc": "", "ayam brand": "", "ayam merk": "",
+    "tepung kfc": "tepung serbaguna",
+    "mie sedap": "mie instan", "mi sedap": "mie instan",
+    "kecap inggris sedap": "kecap inggris",
+    "totole": "", "totole kaldu jamur": "kaldu jamur",
+    "kaldu jamur totole": "kaldu jamur",
 }
 
 UNITS: list[str] = [
@@ -249,6 +336,10 @@ NOISE_ONLY_WORDS: set[str] = {
     "tambah", "tambahkan", "campur", "campurkan",
     "menjadi", "jadi", "dari", "ke", "di",
     "pedas", "asin", "manis", "gurih", "asam",
+    "bumbu", "bahan", "pelengkap", "topping", "hiasan", "olesan",
+    "sambal", "kuah", "isian", "adonan", "cocolan", "sambel", "saus",
+    "saji", "siap", "instan", "kemasan", "premium", "jadi",
+    "rada", "kurleb", "kira", "sekitar", "nya",
 }
 
 # Post-cleaning normalizations: ingredient → canonical name
@@ -266,6 +357,11 @@ POST_NORMALIZE: dict[str, str] = {
     "paha ayam": "paha ayam",
     "dada ayam": "dada ayam",
     "fillet ayam": "dada ayam",
+    "fillet dada ayam": "dada ayam",
+    "dada ayam fillet": "dada ayam",
+    "ayam fillet": "dada ayam",
+    "ayam dada fillet": "dada ayam",
+    "daging ayam fillet": "dada ayam",
     "daging ayam": "ayam",
     "kulit ayam": "kulit ayam",
     "teh celup sariwangi": "teh celup",
@@ -275,13 +371,40 @@ POST_NORMALIZE: dict[str, str] = {
     "es batu": "es batu",
 }
 
+# Prefix abbreviation noise — words that should be stripped when they appear at the
+# START of a token (e.g., "bj cabai" -> "cabai"). These are unit/quantity abbrev
+# leftovers that the leading-qty regex missed.
+PREFIX_NOISE_WORDS: set[str] = {
+    "bj", "bh", "btg", "btr", "lbr", "sdm", "sdt", "sdk", "sk",
+    "an", "dg", "ekr", "ptg", "kpg", "at", "atw", "ato", "et",
+    "sy", "tp", "kn", "yg", "yng", "sm", "bgks", "bks", "bgs",
+    "dan", "atau", "untuk",
+}
+
+# Trailing words that should be stripped — leftover prepositions/conjunctions
+# at end of token (e.g., "serai di" -> "serai", "garam dan" -> "garam").
+TRAILING_NOISE_WORDS: set[str] = {
+    "di", "dan", "atau", "ke", "dari", "untuk", "utk", "dgn", "dengan",
+    "jika", "kalau", "bila", "yg", "yang", "yaitu", "sambil",
+    "sampai", "hingga", "sebagai", "bisa", "boleh", "juga", "lagi",
+    "an", "ny", "kny", "kn", "nya", "kah", "lah", "tp", "lalu",
+    "kemudian", "setelah", "sebelum", "sm", "kya",
+}
+
+# Brand modifier words ("siap pakai", "siap saji", "kemasan")
+PRODUCT_MODIFIER_WORDS: set[str] = {
+    "siap", "pakai", "saji", "instan", "kemasan", "kalengan",
+    "botol", "botolan", "sachet", "premium", "jadi", "olahan",
+    "murah", "grosir", "cepat", "kalengan", "instant",
+}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMPILED REGEXES
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _RE_PARENS = re.compile(r"\([^)]*\)")
 _RE_BRACKETS = re.compile(r"\[[^\]]*\]")
-_RE_SPECIAL_CHARS = re.compile(r"[#>*★✿❤♥•·\-–—|/\\&@!~`\+=%\^]+")
+_RE_SPECIAL_CHARS = re.compile(r"[#>*★✿❤♥•·\-–—|/\\&@!~`\+=%\^×《》\"'`“”‘’️\u200d\ufe0f²³¹⁰⁴⁵⁶⁷⁸⁹½¼¾±°§¿¡₀₁₂₃₄₅₆₇₈₉()\[\]{}$è]+")
 _RE_DOTS = re.compile(r"\.+")
 
 _UNITS_PATTERN = "|".join(re.escape(u) for u in sorted(UNITS, key=len, reverse=True))
@@ -299,6 +422,51 @@ def _make_phrase_re(phrases: list[str], flags: int = re.IGNORECASE) -> re.Patter
 
 _RE_VAGUE = _make_phrase_re(VAGUE_QTY)
 _RE_PREP = _make_phrase_re(PREP_WORDS)
+
+# Stem-prefix patterns: catches ALL words starting with these (handles long-tail typos
+# like "secukupnyaq", "secukupnyag", "seleranya", "kalautok", etc.)
+NOISE_STEMS: list[str] = [
+    "secukup", "scukup", "sckp",          # secukupnya variants
+    "selera", "slera",                     # selera variants
+    "sesuai", "seseuai",                   # sesuai variants
+    "kira_kira", "kirakira",               # kira-kira (post-special-char-strip)
+    "kurleb", "krglbh",                    # kurang lebih
+    "munjung",
+    "ukurang", "berukur", "seukur",        # ukuran variants
+    "jika", "kalau", "kalo", "klo", "bila",  # conditionals
+    "boleh", "bisa",                       # boleh skip / bisa diganti
+    "saya", "aku", "kami", "mama", "papa", "mom",  # personal
+    "skip",
+    "jangan", "jgn",
+    "agak", "rada",
+    "sambil",
+    "supaya",
+    "menumis", "menggoreng", "merebus", "membakar", "memanggang",
+    "marinasi", "marinade", "rebusan", "tumisan", "gorengan",
+    "siapkan",                             # siapkan alumunium foil etc
+]
+_RE_STEM = re.compile(r"\b(?:" + "|".join(re.escape(s) for s in sorted(NOISE_STEMS, key=len, reverse=True)) + r")\w*\b", re.IGNORECASE)
+
+# Unit/quantity modifiers stripped ANYWHERE. Skipped risky ones: "ekor"
+# (ekor sapi = oxtail), "bonggol" (bonggol pisang), "blok" (margarin blok).
+UNIT_MODIFIERS: list[str] = [
+    "buah","bh","biji","butir","btr","lembar","lbr","batang","btg",
+    "kotak","sisir","papan","ikat","tangkai","helai","ruas",
+    "genggam","jumput","sachet","bks","bungkus","kaleng",
+    "cup","ons","pcs","jari","pasang",
+    "ptg","kpg","sdm","sdt","sdk","gram","gr","kg","ml","liter","cm","mm",
+    "mangkok","piring","panci",
+]
+_RE_UNITS_ANYWHERE = re.compile(r"\b(?:" + "|".join(re.escape(u) for u in sorted(UNIT_MODIFIERS, key=len, reverse=True)) + r")\b", re.IGNORECASE)
+
+# Filler/vague words. Skipped size/state words ("panjang", "merah", "kecil")
+# because they distinguish ingredients (kacang panjang vs kacang merah, etc.)
+FILLER_WORDS: list[str] = [
+    "beberapa","bbrp","dll","dst","etc","lainnya","tambahan","masing",
+    "taburan","siraman","celupan","jumbo","mini","perlu",
+    "banyak","sedikit","cukup","kurang","lebih",
+]
+_RE_FILLER = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in sorted(FILLER_WORDS, key=len, reverse=True)) + r")\b", re.IGNORECASE)
 
 # Sentence triggers: if found after ingredient text, truncate there
 _SENTENCE_TRIGGERS = [
@@ -371,7 +539,7 @@ def clean_single_ingredient(raw: str) -> str:
     text = re.sub(r"\b[a-z]\b", "", text)
 
     # 9b. Remove short abbreviation noise (2-letter)
-    for short in ["yg","uk","jd","dr","dl","bs","sm","aj","sy","tp","lg","dg","kl","ga","gk","bt","cb","hr","tr"]:
+    for short in ["yg","uk","jd","dr","dl","bs","sm","aj","sy","tp","lg","dg","kl","ga","gk","bt","cb","hr","tr","ku","aq","gw"]:
         text = re.sub(r"\b" + short + r"\b", "", text)
 
     # 9c. Remove informal/spoken words
@@ -404,6 +572,16 @@ def clean_single_ingredient(raw: str) -> str:
     # 12. Remove vague quantities
     text = _RE_VAGUE.sub("", text)
 
+    # 12b. Remove ANY word starting with a noise stem (catches long-tail typos
+    # like "secukupnyaq", "seleranya", "bolehy", "kalautok", "siapkan")
+    text = _RE_STEM.sub("", text)
+
+    # 12c. Strip filler words anywhere (beberapa, bbrp, dll, taburan...)
+    text = _RE_FILLER.sub("", text)
+
+    # 12d. Strip unit modifiers anywhere (buah, bh, lbr, lembar, butir, kotak...)
+    text = _RE_UNITS_ANYWHERE.sub("", text)
+
     # 13. Remove leading numbers and units
     text = _RE_LEADING_QTY.sub("", text).strip()
     text = re.sub(r"^\d[\d\s./,]*\s*", "", text).strip()
@@ -428,6 +606,38 @@ def clean_single_ingredient(raw: str) -> str:
         canonical = ALIAS_MAP[alias]
         text = re.sub(r"\b" + re.escape(alias) + r"\b", canonical, text, flags=re.IGNORECASE)
 
+    # 16b. Multi-ingredient split — keep first item before " atau "
+    if " atau " in text:
+        text = text.split(" atau ")[0].strip()
+
+    # 16c. Strip leading abbrev/noise words (bj, bh, btg, an, ...)
+    while True:
+        words = text.split()
+        if not words or words[0] not in PREFIX_NOISE_WORDS:
+            break
+        text = " ".join(words[1:])
+
+    # 16d. Strip trailing prep/conjunction (di, dan, atau, yg, ...)
+    while True:
+        words = text.split()
+        if not words or words[-1] not in TRAILING_NOISE_WORDS:
+            break
+        text = " ".join(words[:-1])
+
+    # 16e. Strip product modifier suffixes (siap pakai, siap saji, instan)
+    while True:
+        words = text.split()
+        if not words or words[-1] not in PRODUCT_MODIFIER_WORDS:
+            break
+        text = " ".join(words[:-1])
+
+    # 16f. Collapse consecutive duplicate words: "cabai cabai rawit" -> "cabai rawit"
+    # Run iteratively until stable (handles "cabai cabai cabai")
+    prev = None
+    while text != prev:
+        prev = text
+        text = re.sub(r"\b(\w+)(\s+\1\b)+", r"\1", text)
+
     # 17. Post-normalize known compound ingredient names
     text_stripped = re.sub(r"\s+", " ", text).strip()
     if text_stripped in POST_NORMALIZE:
@@ -446,7 +656,7 @@ def clean_single_ingredient(raw: str) -> str:
         return ""
     if text in SECTION_HEADERS:
         return ""
-    if len(text) > 35:
+    if len(text) > 30:
         return ""
     if len(text) < 2:
         return ""
@@ -456,10 +666,31 @@ def clean_single_ingredient(raw: str) -> str:
     if text == "air":
         return ""
 
+    # 19b. Discard if starts with section header word AND not in whitelist
+    first = text.split()[0] if text.split() else ""
+    if first in {"bumbu", "bahan", "pelengkap", "topping", "hiasan",
+                  "olesan", "kuah", "isian", "adonan", "cocolan", "sambel"}:
+        if text not in SECTION_HEADER_WHITELIST:
+            return ""
+
+    # 19c. Discard if contains cooking action verb (post-PREP-strip residue)
+    POST_ACTION = {"menumis", "menggoreng", "merebus", "membakar",
+                   "memanggang", "marinasi", "marinade", "rebusan",
+                   "tumisan", "gorengan", "suwir", "suir"}
+    if any(w in POST_ACTION for w in text.split()):
+        return ""
+
     # 20. FINAL VALIDATION PASS — catch any remaining noise
     # Remove any single-letter tokens that survived
     text = re.sub(r"\b[a-z]\b", "", text).strip()
     text = re.sub(r"\s{2,}", " ", text).strip()
+
+    # Re-strip trailing noise after single-letter removal
+    while True:
+        words = text.split()
+        if not words or words[-1] not in TRAILING_NOISE_WORDS:
+            break
+        text = " ".join(words[:-1])
 
     # Final discard checks
     if not text or len(text) < 2:
@@ -494,7 +725,7 @@ def clean_ingredients_cell(raw_cell: str) -> tuple[list[str], int]:
 
 def main() -> None:
     input_path = r"D:\PPT\NirSisa\EDA Dataset\Indonesian_Food_Recipes.csv"
-    output_path = r"D:\PPT\NirSisa\EDA Dataset\Indonesian_Food_Recipes_Cleaned_v2.csv"
+    output_path = r"D:\PPT\NirSisa\EDA Dataset\Indonesian_Food_Recipes_Cleaned_v3.csv"
 
     print("Reading:", input_path)
 
