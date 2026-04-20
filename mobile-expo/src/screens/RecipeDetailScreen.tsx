@@ -32,7 +32,8 @@ type Props = NativeStackScreenProps<ChefAIStackParamList, "RecipeDetail">;
 const STAPLE_INGREDIENTS = [
   "garam", "gula", "lada", "merica", "air", "minyak", "kecap", 
   "penyedap", "msg", "masako", "royco", "tauco", "maizena", "bawang",
-  "bawang putih", "bawang merah", "saus", "cabe", "cabai", "bawang bombay", "bumbu", "tumisan", "saus", "saos", "sambal", "minyak sayur", "telor", "telur", "ayam", "daging", "ikan", "udang", "tahu", "tempe",
+  "bawang putih", "bawang merah", "saus", "cabe", "cabai", "bawang bombay", "bumbu", "tumisan", "saus", "saos", "sambal", "minyak sayur", "telor", "telur", "ayam", "daging", "ikan", "udang", "tempe",
+  "garlic", "daun bawang"
 ];
 
 const checkIsStaple = (text: string): boolean => {
@@ -46,7 +47,7 @@ const checkIsStaple = (text: string): boolean => {
 
   // 3. Buang satuan ukuran umum agar tidak dianggap sebagai nama bahan
   // Kita buat regex untuk mencari satuan ukuran sebagai kata utuh (\b)
-  const noUnits = noNumbers.replace(/\b(ml|gr|g|kg|l|liter|sdt|sdm|tsp|tbsp|ons|cc|bungkus|bks|buah|pcs|batang|btg|siung|ikat|ruas|lembar|cm)\b/g, " ");
+  const noUnits = noNumbers.replace(/\b(ml|gr|g|kg|l|liter|sdt|sdm|tsp|tbsp|ons|cc|bungkus|bks|buah|pcs|batang|btg|siung|ikat|ruas|lembar|cm|bh|secukupnya|utk|untuk|taburan|iris|daun|cincang|geprek|halus|kasar|sesuai|selera|secukup nya|sedikit)\b/g, " ");
 
   // 4. Bersihkan spasi berlebih dan ambil kata-kata yang tersisa
   const cleanContent = noUnits.trim(); // Contoh: "2000 ml air" -> "air"
@@ -127,7 +128,7 @@ const getUnitGroup = (unit: string | null): UnitGroup | null => {
   if (!unit) return "count";
   if (["g", "kg", "ons"].includes(unit)) return "weight";
   if (["ml", "l", "tsp", "tbsp"].includes(unit)) return "volume";
-  if (["pcs", "batang", "siung", "ikat", "ruas", "jari", "jempol", "bungkus", "bks"].includes(unit)) return "count";
+  if (["pcs", "batang", "siung", "ikat", "ruas", "jari", "jempol", "bungkus", "bks", "bh"].includes(unit)) return "count";
   return "other";
 };
 
@@ -275,7 +276,7 @@ const STOPWORDS = new Set([
   "kulit", "kerasnya", "secukupnya", "sesuai", "selera", "bahan", "dan", "atau", "cincang",
   "sendok", "makan", "teh", "gelas", "cup", "cc",
   "cuci", "bersih", "seduh", "dirajang", "halus", "kasar", "iris", "matang", 
-  "rebus", "air", "panas", "tiriskan", "suir", "suwir"
+  "rebus", "air", "panas", "tiriskan", "suir", "suwir", "bh"
 ]);
 
 const tokenizeIngredient = (text: string): string[] => {
