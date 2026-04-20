@@ -4,11 +4,9 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-from typing import List
 
 from app.core.config import get_settings
 from app.ai.cbf import RecipeKnowledgeBase
@@ -19,6 +17,7 @@ from app.api.health import router as health_router
 from app.api.inventory import router as inventory_router
 from app.api.recipes import router as recipes_router
 from app.api.recommend import router as recommend_router
+from app.api.notifications import router as notifications_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,16 +25,53 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- SCHEDULER ---
+_scheduler = None
+
+
+def _start_scheduler():
+    """Jalankan APScheduler untuk expiry check harian pukul 07:00 WIB (00:00 UTC)."""
+    global _scheduler
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from app.tasks.expiry_checker import check_and_notify
+
+        _scheduler = BackgroundScheduler(timezone="UTC")
+        _scheduler.add_job(
+            check_and_notify,
+            trigger="cron",
+            hour=0,
+            minute=0,
+            id="daily_expiry_check",
+            replace_existing=True,
+        )
+        _scheduler.start()
+        logger.info("Scheduler started: expiry check daily at 00:00 UTC (07:00 WIB)")
+    except ImportError:
+        logger.warning("apscheduler not installed — skipping scheduled expiry check. "
+                       "Install with: pip install apscheduler")
+    except Exception as e:
+        logger.error("Failed to start scheduler: %s", e)
+
+
+def _stop_scheduler():
+    global _scheduler
+    if _scheduler:
+        _scheduler.shutdown(wait=False)
+        logger.info("Scheduler stopped.")
+        _scheduler = None
+
+
 # --- LIFESPAN (Startup & Shutdown) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=== NirSisa Backend Starting ===")
-    
+
+    # Load AI Engine
     try:
         kb = RecipeKnowledgeBase.get_instance()
         kb.load()
         logger.info(f"AI Engine siap: {len(kb.df_recipes)} resep dimuat.")
-        # Log diagnostic saat startup
         diag = diagnose_kb()
         logger.info("KB diagnostic: vocab_size=%s, matrix=%s, comma_sep=%s",
                      diag.get("vocab_size"), diag.get("matrix_shape"),
@@ -45,8 +81,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"GAGAL memuat AI Engine: {e}")
 
+    # Start scheduler
+    _start_scheduler()
+
     yield
+
+    _stop_scheduler()
     logger.info("=== NirSisa Backend Shutting Down ===")
+
 
 # --- APP FACTORY ---
 def create_app() -> FastAPI:
@@ -66,16 +108,16 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Register Modern Routers
+    # Register Routers
     app.include_router(health_router)
     app.include_router(inventory_router)
     app.include_router(recipes_router)
     app.include_router(recommend_router)
+    app.include_router(notifications_router)
 
-    # --- DIAGNOSTIC ENDPOINT (hapus setelah fix terkonfirmasi) ---
+    # --- DEBUG ENDPOINT ---
     @app.get("/debug/kb", tags=["Debug"])
     def debug_knowledge_base():
-        """Inspeksi status knowledge base untuk debugging cosine=0."""
         return diagnose_kb()
 
     # --- LEGACY ENDPOINTS ---
@@ -107,9 +149,10 @@ def create_app() -> FastAPI:
     def read_root():
         return {
             "status": "NirSisa Backend is Online",
-            "engine": "Modular AI Engine Active"
+            "engine": "Modular AI Engine Active",
         }
 
     return app
+
 
 app = create_app()
