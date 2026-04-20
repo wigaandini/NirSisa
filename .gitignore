@@ -166,3 +166,4 @@ NIRSISA/
 ├── .gitignore
 ├── README.md
 └── requirements.txt
+.DS_Store

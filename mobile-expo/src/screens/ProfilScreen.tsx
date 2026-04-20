@@ -616,6 +616,17 @@ const ProfilScreen: React.FC = () => {
           />
         </View>
 
+        <Text style={styles.fieldLabel}>AKTIVITAS</Text>
+        <TouchableOpacity
+          style={styles.inputRow}
+          onPress={() => navigation.navigate("FavoriteRecipes")}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="heart-outline" size={18} color="#949FA2" style={styles.inputIcon} />
+          <Text style={styles.inputText}>Resep Favorit Saya</Text>
+          <Ionicons name="chevron-forward" size={18} color="#949FA2" />
+        </TouchableOpacity>
+
         <Text style={styles.fieldLabel}>KEAMANAN</Text>
         <TouchableOpacity
           style={styles.inputRow}
