@@ -12,7 +12,7 @@ from typing import List
 
 from app.core.config import get_settings
 from app.ai.cbf import RecipeKnowledgeBase
-from app.ai.recommender import get_recommendations, InventoryItem
+from app.ai.recommender import get_recommendations, InventoryItem, diagnose_kb
 
 # Routers
 from app.api.health import router as health_router
@@ -31,11 +31,17 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("=== NirSisa Backend Starting ===")
     
-    # LOAD MODEL HANYA SEKALI DI SINI
     try:
         kb = RecipeKnowledgeBase.get_instance()
         kb.load()
         logger.info(f"AI Engine siap: {len(kb.df_recipes)} resep dimuat.")
+        # Log diagnostic saat startup
+        diag = diagnose_kb()
+        logger.info("KB diagnostic: vocab_size=%s, matrix=%s, comma_sep=%s",
+                     diag.get("vocab_size"), diag.get("matrix_shape"),
+                     diag.get("is_comma_separated"))
+        logger.info("KB vocab sample: %s", diag.get("vocab_sample_30", [])[:10])
+        logger.info("KB token check: %s", diag.get("token_in_vocab"))
     except Exception as e:
         logger.error(f"GAGAL memuat AI Engine: {e}")
 
@@ -66,7 +72,13 @@ def create_app() -> FastAPI:
     app.include_router(recipes_router)
     app.include_router(recommend_router)
 
-    # --- LEGACY ENDPOINT (Disesuaikan ke Modul AI Baru) ---
+    # --- DIAGNOSTIC ENDPOINT (hapus setelah fix terkonfirmasi) ---
+    @app.get("/debug/kb", tags=["Debug"])
+    def debug_knowledge_base():
+        """Inspeksi status knowledge base untuk debugging cosine=0."""
+        return diagnose_kb()
+
+    # --- LEGACY ENDPOINTS ---
     @app.get("/auth/callback", response_class=HTMLResponse, tags=["Auth"])
     def auth_callback(request: Request):
         app_redirect = request.query_params.get("app_redirect", "nirsisa://")
@@ -97,24 +109,6 @@ def create_app() -> FastAPI:
             "status": "NirSisa Backend is Online",
             "engine": "Modular AI Engine Active"
         }
-
-    # @app.post("/recommend", tags=["Legacy"])
-    # def recommend_legacy(request: RecommendRequestLegacy):
-    #     """
-    #     Endpoint legacy tetap jalan, tapi sekarang memanggil 
-    #     logic dari app.ai.recommender agar efisien.
-    #     """
-    #     try:
-    #         # Map request manual ke format modul AI
-    #         inventory = [
-    #             InventoryItem(name=item.name, days_remaining=item.days_left)
-    #             for item in request.ingredients
-    #         ]
-            
-    #         result = get_recommendations(inventory=inventory, top_k=10)
-    #         return {"recommendations": result.recipes}
-    #     except Exception as e:
-    #         raise HTTPException(status_code=500, detail=str(e))
 
     return app
 
