@@ -1,5 +1,3 @@
-# Ambil bahan user dari DB -> jalankan AI Engine -> return Top-K resep.
-
 from __future__ import annotations
 
 import logging
@@ -21,7 +19,6 @@ router = APIRouter(prefix="/recommend", tags=["Recommendations"])
 
 
 def _build_explanation(item: dict) -> str:
-    # Bangun teks penjelasan Explainable AI untuk satu rekomendasi 
     parts: list[str] = []
 
     match_pct = item.get("match_percentage", 0)
@@ -47,18 +44,9 @@ async def recommend(
     user_id: str = Depends(get_current_user_id),
     top_k: int = Query(default=None, ge=1, le=50, description="Jumlah rekomendasi"),
 ):
-    # Dapatkan rekomendasi resep berdasarkan inventaris user
-
-    # Pipeline:
-    # 1. Ambil seluruh stok bahan user dari database
-    # 2. Hitung SPI per-bahan
-    # 3. Jalankan Content-Based Filtering + SPI re-ranking
-    # 4. Return Top-K resep dengan skor & penjelasan
-    
     settings = get_settings()
     k = top_k or settings.TOP_K_RECOMMENDATIONS
 
-    # Step 1: Ambil inventaris user
     inventory = get_user_inventory_with_spi(user_id)
 
     if not inventory:
@@ -67,21 +55,19 @@ async def recommend(
             detail="Inventaris kosong. Tambahkan bahan terlebih dahulu.",
         )
 
-    # Step 2: Konversi ke format AI engine
     ai_items: list[AIInventoryItem] = []
     for item in inventory:
         name = item.get("item_name_normalized") or item.get("item_name", "")
         days = item.get("days_remaining")
         ai_items.append(AIInventoryItem(name=name, days_remaining=days))
 
-    # Step 3: Jalankan rekomendasi
     try:
         result = get_recommendations(
             inventory=ai_items,
             top_k=k,
             spi_weight=settings.SPI_WEIGHT,
             alpha=settings.SPI_DECAY_FACTOR,
-            cosine_threshold=0.0,  
+            cosine_threshold=0.0,
         )
     except RuntimeError as e:
         logger.error("AI engine error: %s", e)
@@ -90,7 +76,6 @@ async def recommend(
             detail="Mesin rekomendasi belum siap. Coba lagi nanti.",
         )
 
-    # Step 4: Build response
     recommendations: list[RecommendationItem] = []
     for rec in result.recipes:
         item_dict = {
@@ -104,6 +89,7 @@ async def recommend(
             "category": rec.category,
             "total_ingredients": rec.total_ingredients,
             "total_steps": rec.total_steps,
+            "quantity": rec.quantity,
             "cosine_score": rec.cosine_score,
             "spi_score": rec.spi_score,
             "final_score": rec.final_score,

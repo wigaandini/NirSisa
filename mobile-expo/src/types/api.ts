@@ -18,6 +18,7 @@ export interface RecommendationItem {
   category: string | null;
   total_ingredients: number;
   total_steps: number;
+  quantity: string | null;        // v4: takaran per-bahan (comma-separated)
   cosine_score: number;           // 0..1 — kecocokan TF-IDF
   spi_score: number;              // 0..1 — urgensi (normalized)
   final_score: number;            // (1-λ)*cosine + λ*SPI

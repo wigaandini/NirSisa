@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     loves               INTEGER NOT NULL DEFAULT 0,
     url                 TEXT,
     category_id         INTEGER NOT NULL REFERENCES recipe_categories(id),
+    quantity            TEXT DEFAULT '',        -- v4: takaran per-bahan (comma-separated)
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -65,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_recipes_loves ON recipes(loves DESC);
 -- ============================================================
 CREATE TABLE IF NOT EXISTS recipe_tfidf_cache (
     id                  SERIAL PRIMARY KEY,
-    version             VARCHAR(20) UNIQUE NOT NULL,  -- e.g. 'v1.0'
+    version             VARCHAR(20) UNIQUE NOT NULL,  -- e.g. 'v4.0'
     vectorizer_blob     BYTEA NOT NULL,               -- joblib serialized TfidfVectorizer
     tfidf_matrix_blob   BYTEA NOT NULL,               -- joblib serialized sparse matrix
     recipe_id_order     JSONB NOT NULL,                -- ordered recipe IDs matching matrix rows
@@ -77,15 +78,15 @@ CREATE TABLE IF NOT EXISTS recipe_tfidf_cache (
 -- ============================================================
 CREATE TABLE IF NOT EXISTS ingredient_categories (
     id   SERIAL PRIMARY KEY,
-    name VARCHAR(100) UNIQUE NOT NULL  -- sayur, daging_sapi, daging_ayam, ikan, udang, telur, tahu, tempe, buah, dairy, bumbu_kering, dll
+    name VARCHAR(100) UNIQUE NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS shelf_life_reference (
     id                 SERIAL PRIMARY KEY,
     ingredient_name    VARCHAR(150) NOT NULL,
     category_id        INTEGER NOT NULL REFERENCES ingredient_categories(id),
-    shelf_life_days    INTEGER NOT NULL,       -- estimated days in fridge
-    storage_condition  VARCHAR(50) NOT NULL DEFAULT 'kulkas',  -- kulkas / freezer / suhu_ruang
+    shelf_life_days    INTEGER NOT NULL,
+    storage_condition  VARCHAR(50) NOT NULL DEFAULT 'kulkas',
     source             VARCHAR(255),
     UNIQUE(ingredient_name, storage_condition)
 );
@@ -99,13 +100,13 @@ CREATE INDEX IF NOT EXISTS idx_shelf_life_category ON shelf_life_reference(categ
 CREATE TABLE IF NOT EXISTS inventory_stock (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id                 UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    item_name               VARCHAR(150) NOT NULL,      -- raw user input
-    item_name_normalized    VARCHAR(150),                -- after fuzzy matching
+    item_name               VARCHAR(150) NOT NULL,
+    item_name_normalized    VARCHAR(150),
     category_id             INTEGER REFERENCES ingredient_categories(id),
     quantity                DECIMAL(10,2) NOT NULL DEFAULT 1,
     unit                    VARCHAR(30) DEFAULT 'buah',
-    expiry_date             DATE,                        -- user-provided or estimated
-    is_natural              BOOLEAN NOT NULL DEFAULT FALSE,  -- true = no packaging, estimated shelf life
+    expiry_date             DATE,
+    is_natural              BOOLEAN NOT NULL DEFAULT FALSE,
     added_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -114,7 +115,6 @@ CREATE INDEX IF NOT EXISTS idx_inventory_user ON inventory_stock(user_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_expiry ON inventory_stock(expiry_date);
 CREATE INDEX IF NOT EXISTS idx_inventory_user_item ON inventory_stock(user_id, item_name_normalized);
 
--- Trigger to auto-update updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS consumption_history (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id       UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     recipe_id     INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
-    recipe_title  VARCHAR(255),   -- denormalized for display
+    recipe_title  VARCHAR(255),
     cooked_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS notification_log (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id             UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     inventory_stock_id  UUID REFERENCES inventory_stock(id) ON DELETE SET NULL,
-    notification_type   VARCHAR(50) NOT NULL,  -- 'expiry_warning', 'expiry_critical'
+    notification_type   VARCHAR(50) NOT NULL,
     title               VARCHAR(255),
     body                TEXT,
     sent_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -189,10 +189,9 @@ CREATE INDEX IF NOT EXISTS idx_notification_user ON notification_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_notification_sent ON notification_log(sent_at);
 
 -- ============================================================
--- VIEWS: Useful aggregations
+-- VIEWS
 -- ============================================================
 
--- View: inventory with days remaining and SPI score
 CREATE OR REPLACE VIEW inventory_with_spi AS
 SELECT
     inv.*,
@@ -209,9 +208,9 @@ SELECT
     CASE
         WHEN inv.expiry_date IS NULL THEN 'unknown'
         WHEN (inv.expiry_date - CURRENT_DATE) <= 0 THEN 'expired'
-        WHEN (inv.expiry_date - CURRENT_DATE) <= 2 THEN 'critical'   -- merah
-        WHEN (inv.expiry_date - CURRENT_DATE) <= 5 THEN 'warning'    -- kuning
-        ELSE 'fresh'                                                   -- hijau
+        WHEN (inv.expiry_date - CURRENT_DATE) <= 2 THEN 'critical'
+        WHEN (inv.expiry_date - CURRENT_DATE) <= 5 THEN 'warning'
+        ELSE 'fresh'
     END AS freshness_status,
     ic.name AS category_name
 FROM inventory_stock inv

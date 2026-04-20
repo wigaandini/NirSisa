@@ -1,4 +1,4 @@
-"""Seed recipes from cleaned CSV into Supabase."""
+"""Seed recipes from cleaned CSV v4 into Supabase."""
 
 import os
 import sys
@@ -21,7 +21,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     print("ERROR: Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in database/.env")
     sys.exit(1)
 
-CSV_PATH = Path(__file__).resolve().parent.parent.parent / "EDA Dataset" / "Indonesian_Food_Recipes_Cleaned_v2.csv"
+CSV_PATH = Path(__file__).resolve().parent.parent.parent / "EDA Dataset" / "Indonesian_Food_Recipes_Cleaned_v4.csv"
 
 BATCH_SIZE = 500
 
@@ -58,6 +58,7 @@ def read_csv() -> list[dict]:
                 "loves": int(row["Loves"]),
                 "url": row["URL"].strip(),
                 "category": row["Category"].strip().lower(),
+                "quantity": row.get("Quantity", "").strip(),
             })
     return recipes
 
@@ -95,6 +96,7 @@ def seed_recipes(supabase: Client, cat_map: dict[str, int]):
                 "loves": r["loves"],
                 "url": r["url"],
                 "category_id": cat_id,
+                "quantity": r["quantity"],
             })
 
         if rows:
@@ -107,7 +109,7 @@ def seed_recipes(supabase: Client, cat_map: dict[str, int]):
 
 
 def main():
-    print("NirSisa Recipe Seeder")
+    print("NirSisa Recipe Seeder (v4)")
     print("=" * 40)
     print(f"CSV path: {CSV_PATH}")
     print(f"Supabase URL: {SUPABASE_URL}")
