@@ -23,6 +23,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
+import { unregisterPushToken } from "../services/notifications";
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -125,7 +126,6 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
         pointerEvents="box-none"
       >
         <Animated.View style={[modalStyles.sheet, { transform: [{ translateY: slideAnim }] }]}>
-          {/* Sheet Header */}
           <View style={modalStyles.sheetHeader}>
             <Text style={modalStyles.sheetTitle}>Ganti Kata Sandi</Text>
             <TouchableOpacity style={modalStyles.closeButton} onPress={handleClose}>
@@ -137,7 +137,6 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
             Pastikan kata sandi baru Anda kuat dan belum pernah digunakan sebelumnya.
           </Text>
 
-          {/* Kata Sandi Lama */}
           <Text style={modalStyles.fieldLabel}>KATA SANDI LAMA</Text>
           <View style={modalStyles.inputRow}>
             <TextInput
@@ -153,7 +152,6 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
             </TouchableOpacity>
           </View>
 
-          {/* Kata Sandi Baru */}
           <Text style={modalStyles.fieldLabel}>KATA SANDI BARU</Text>
           <View style={modalStyles.inputRow}>
             <TextInput
@@ -169,7 +167,6 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
             </TouchableOpacity>
           </View>
 
-          {/* Konfirmasi Kata Sandi Baru */}
           <Text style={modalStyles.fieldLabel}>KONFIRMASI KATA SANDI BARU</Text>
           <View style={modalStyles.inputRow}>
             <TextInput
@@ -185,7 +182,6 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
             </TouchableOpacity>
           </View>
 
-          {/* Actions */}
           <TouchableOpacity style={modalStyles.saveButton} activeOpacity={0.85} onPress={handleSavePassword} disabled={saving}>
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -240,7 +236,6 @@ const GantiFotoModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ v
         <Text style={fotoStyles.title}>Ganti Foto Profil</Text>
         <Text style={fotoStyles.subtitle}>Pilih cara untuk memperbarui foto Anda</Text>
 
-        {/* Options Card */}
         <View style={fotoStyles.optionCard}>
           <TouchableOpacity style={fotoStyles.optionRow} activeOpacity={0.7}>
             <View style={[fotoStyles.optionIcon, { backgroundColor: "#BB0009" }]}>
@@ -267,7 +262,6 @@ const GantiFotoModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ v
           </TouchableOpacity>
         </View>
 
-        {/* Batal */}
         <TouchableOpacity style={fotoStyles.cancelButton} onPress={onClose} activeOpacity={0.7}>
           <Text style={fotoStyles.cancelText}>Batal</Text>
         </TouchableOpacity>
@@ -501,12 +495,12 @@ const ProfilScreen: React.FC = () => {
     try {
       const { error } = await supabase
         .from("profiles")
-        .upsert({ 
-          id: session.user.id, 
+        .upsert({
+          id: session.user.id,
           display_name: profileName.trim(),
-          updated_at: new Date().toISOString(), // Bagus untuk tracking di DB
+          updated_at: new Date().toISOString(),
         }, {
-          onConflict: 'id' // Memberitahu Supabase untuk update jika ID bentrok
+          onConflict: "id",
         });
 
       if (error) throw error;
@@ -522,7 +516,19 @@ const ProfilScreen: React.FC = () => {
   const handleLogout = () => {
     Alert.alert("Keluar Akun", "Apakah Anda yakin ingin keluar?", [
       { text: "Batal", style: "cancel" },
-      { text: "Keluar", style: "destructive", onPress: signOut },
+      {
+        text: "Keluar",
+        style: "destructive",
+        onPress: async () => {
+          // Nonaktifkan push token sebelum logout
+          try {
+            await unregisterPushToken();
+          } catch (err) {
+            console.warn("[ProfilScreen] gagal unregister push token:", err);
+          }
+          signOut();
+        },
+      },
     ]);
   };
 
@@ -610,19 +616,6 @@ const ProfilScreen: React.FC = () => {
           />
         </View>
 
-        {/* --- TAMBAHKAN KODE DI BAWAH INI --- */}
-        <Text style={styles.fieldLabel}>AKTIVITAS</Text>
-        <TouchableOpacity
-          style={styles.inputRow}
-          onPress={() => navigation.navigate("FavoriteRecipes")}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="heart-outline" size={18} color="#949FA2" style={styles.inputIcon} />
-          <Text style={styles.inputText}>Resep Favorit Saya</Text>
-          <Ionicons name="chevron-forward" size={18} color="#949FA2" />
-        </TouchableOpacity>
-        {/* --- AKHIR KODE BARU --- */}
-
         <Text style={styles.fieldLabel}>KEAMANAN</Text>
         <TouchableOpacity
           style={styles.inputRow}
@@ -699,7 +692,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // ── Avatar Section ──
   avatarSection: {
     alignItems: "center",
     marginBottom: 32,
@@ -759,7 +751,6 @@ const styles = StyleSheet.create({
     height: 16,
     backgroundColor: "#BFD3D6",
   },
-  // ── Form ──
   fieldLabel: {
     fontFamily: "Inter_700Bold",
     fontSize: 11,
@@ -794,7 +785,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#2B2B2B",
   },
-  // ── Logout ──
   logoutButton: {
     flexDirection: "row",
     alignItems: "center",

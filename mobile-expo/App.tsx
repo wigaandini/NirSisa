@@ -10,10 +10,16 @@ import {
 import SplashScreen from "./src/screens/SplashScreen";
 import AppNavigator from "./src/navigation/AppNavigator";
 import { AuthProvider } from "./src/context/AuthContext";
+import { useNotifications } from "./src/hooks/useNotifications";
+
+// Komponen inner agar useNotifications bisa akses AuthContext
+const AppContent: React.FC = () => {
+  useNotifications();
+  return <AppNavigator />;
+};
 
 const App: React.FC = () => {
   const [isSplashDone, setIsSplashDone] = useState(false);
-
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_600SemiBold,
@@ -41,7 +47,7 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <NavigationContainer>
-        <AppNavigator />
+        <AppContent />
       </NavigationContainer>
     </AuthProvider>
   );
