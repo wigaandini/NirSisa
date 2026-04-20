@@ -21,9 +21,7 @@ import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
-// ▼▼▼ FIX DISPLAY: import formatter untuk capitalize each word ▼▼▼
 import { capitalizeEachWord, formatCategoryLabel } from "../utils/formatters";
-// ▲▲▲
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 const API_URL = "https://nirsisa-production.up.railway.app";
@@ -41,7 +39,7 @@ interface InventoryItem {
 const StokScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { session } = useAuth();
-  
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,65 +49,54 @@ const StokScreen: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<StokFilter>(DEFAULT_STOK_FILTER);
 
   const fetchInventory = async () => {
-  if (!session?.user?.id) return;
-  setLoading(true);
+    if (!session?.user?.id) return;
+    setLoading(true);
 
-  try {
-    let query = supabase
-      .from("inventory_with_spi")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .gt("quantity", 0);
+    try {
+      let query = supabase
+        .from("inventory_with_spi")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .gt("quantity", 0);
 
-    // --- FIX FILTER KATEGORI ---
-    if (activeFilter.kategori.length > 0) {
-      const selectedCats = activeFilter.kategori;
-      const hasLainLain = selectedCats.includes("Lain-lain" as any);
-      
-      // Ambil kategori selain "Lain-lain"
-      const actualCats = selectedCats.filter(c => c !== ("Lain-lain" as any));
+      if (activeFilter.kategori.length > 0) {
+        const selectedCats = activeFilter.kategori;
+        const hasLainLain = selectedCats.includes("Lain-lain" as any);
+        const actualCats = selectedCats.filter((c) => c !== ("Lain-lain" as any));
 
-      if (hasLainLain && actualCats.length > 0) {
-        // Skenario: Pilih "Lain-lain" DAN kategori lain (misal: Sayuran)
-        // Query: category_name ada di list ATAU category_name IS NULL
-        query = query.or(`category_name.in.(${actualCats.join(",")}),category_name.is.null`);
-      } else if (hasLainLain) {
-        // Skenario: HANYA pilih "Lain-lain"
-        query = query.is("category_name", null);
-      } else {
-        // Skenario: Pilih kategori standar saja
-        query = query.in("category_name", actualCats);
+        if (hasLainLain && actualCats.length > 0) {
+          query = query.or(`category_name.in.(${actualCats.join(",")}),category_name.is.null`);
+        } else if (hasLainLain) {
+          query = query.is("category_name", null);
+        } else {
+          query = query.in("category_name", actualCats);
+        }
       }
-    }
 
-    // --- FIX FILTER STATUS (Mapping Label ke Database Value) ---
-    if (activeFilter.status.length > 0) {
-      const statusMap: Record<string, string> = {
-        "Segera Kadaluwarsa": "expired",
-        "Mendekati Kedaluwarsa": "warning",
-        "Segar": "fresh"
-      };
-      
-      // Ubah ["Segera Kadaluwarsa"] menjadi ["expired"]
-      const mappedStatus = activeFilter.status.map(s => statusMap[s]);
-      query = query.in("freshness_status", mappedStatus);
-    }
+      if (activeFilter.status.length > 0) {
+        const statusMap: Record<string, string> = {
+          "Segera Kadaluwarsa": "expired",
+          "Mendekati Kedaluwarsa": "warning",
+          Segar: "fresh",
+        };
 
-    // --- FIX SORTING ---
-    if (activeFilter.sortBy === "expiry") {
-      query = query.order("expiry_date", { ascending: true });
-    } else if (activeFilter.sortBy === "name_az") {
-      query = query.order("item_name", { ascending: true });
-    } else if (activeFilter.sortBy === "quantity") {
-      query = query.order("quantity", { ascending: false });
-    }
+        const mappedStatus = activeFilter.status.map((s) => statusMap[s]);
+        query = query.in("freshness_status", mappedStatus);
+      }
 
-    const { data, error } = await query;
-    if (error) throw error;
+      if (activeFilter.sortBy === "expiry") {
+        query = query.order("expiry_date", { ascending: true });
+      } else if (activeFilter.sortBy === "name_az") {
+        query = query.order("item_name", { ascending: true });
+      } else if (activeFilter.sortBy === "quantity") {
+        query = query.order("quantity", { ascending: false });
+      }
 
-    console.log("Data setelah filter:", data?.length, "item");
-    setInventory(data || []);
+      const { data, error } = await query;
+      if (error) throw error;
 
+      console.log("Data setelah filter:", data?.length, "item");
+      setInventory(data || []);
     } catch (error: any) {
       console.error("Filter Error:", error.message);
     } finally {
@@ -139,8 +126,7 @@ const StokScreen: React.FC = () => {
           unit: bahan.satuan,
           is_natural: bahan.isNatural,
           expiry_date: bahan.tanggalExpired,
-          category_name: bahan.kategori // <--- TAMBAHKAN BARIS INI
-
+          category_name: bahan.kategori,
         },
         { headers: { Authorization: `Bearer ${session.access_token}` } }
       );
@@ -151,62 +137,54 @@ const StokScreen: React.FC = () => {
         fetchInventory();
       }
     } catch (error: any) {
-      // --- UBAH BAGIAN INI UNTUK DEBUGGING ---
       const serverMessage = error.response?.data?.detail || error.message;
       console.error("Server Error Detail:", serverMessage);
       Alert.alert("Gagal Menyambung", `Pesan Server: ${serverMessage}`);
-      // ---------------------------------------
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteBahan = (item: InventoryItem) => {
-  Alert.alert(
-    "Hapus Bahan",
-    `Apakah Anda yakin ingin menghapus ${capitalizeEachWord(item.item_name)} dari stok?`,
-    [
-      { text: "Batal", style: "cancel" },
-      { 
-        text: "Hapus", 
-        style: "destructive", 
-        onPress: async () => {
-          try {
-            if (!session?.access_token) return;
-            setLoading(true);
-            
-            // Panggil API Delete ke Railway
-            await axios.delete(`${API_URL}/inventory/${item.id}`, {
-              headers: { Authorization: `Bearer ${session.access_token}` }
-            });
+    Alert.alert(
+      "Hapus Bahan",
+      `Apakah Anda yakin ingin menghapus ${capitalizeEachWord(item.item_name)} dari stok?`,
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Hapus",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              if (!session?.access_token) return;
+              setLoading(true);
 
-            Alert.alert("Berhasil", "Bahan telah dihapus.");
-            fetchInventory(); // Refresh daftar stok
-          } catch (error: any) {
-            console.error("Delete Error:", error.message);
-            Alert.alert("Gagal", "Gagal menghapus bahan.");
-            setLoading(false);
-          }
-        }
-      }
-    ]
-  );
-};
+              await axios.delete(`${API_URL}/inventory/${item.id}`, {
+                headers: { Authorization: `Bearer ${session.access_token}` },
+              });
 
-  // --- LOGIKA PEMROSESAN DATA (GROUPING) ---
+              Alert.alert("Berhasil", "Bahan telah dihapus.");
+              fetchInventory();
+            } catch (error: any) {
+              console.error("Delete Error:", error.message);
+              Alert.alert("Gagal", "Gagal menghapus bahan.");
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const groupedInventory = useMemo(() => {
-    // 1. Filter pencarian
-    // Catatan: item.item_name di DB sudah lowercase (hasil normalizer),
-    // jadi kita cukup lowercase searchQuery untuk matching yang konsisten.
-    const filtered = inventory.filter(item => 
+    const filtered = inventory.filter((item) =>
       (item.item_name || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const groups: Record<string, InventoryItem[]> = {};
-    
-    filtered.forEach(item => {
-      // Jika category_name NULL di DB, masukkan ke grup "Lain-lain"
-      const groupName = item.category_name || "Lain-lain"; 
+
+    filtered.forEach((item) => {
+      const groupName = item.category_name || "Lain-lain";
       if (!groups[groupName]) {
         groups[groupName] = [];
       }
@@ -218,7 +196,7 @@ const StokScreen: React.FC = () => {
 
   const getStatusDisplay = (_status: string, days: number) => {
     if (days <= 0) {
-      return { label: "EXPIRED", color: "#BB0009" };
+      return { label: "EXPIRED", color: "#000000" };
     }
 
     if (days === 1) {
@@ -244,7 +222,6 @@ const StokScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BB0009" />}
       >
-        {/* Header */}
         <View style={styles.header}>
           <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
           <View style={styles.headerRight}>
@@ -257,7 +234,6 @@ const StokScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Search */}
         <View style={styles.searchRow}>
           <View style={styles.searchBar}>
             <Ionicons name="search-outline" size={18} color="#949FA2" />
@@ -277,76 +253,66 @@ const StokScreen: React.FC = () => {
           <Text style={styles.addButtonText}>Tambah Stok Bahan</Text>
         </TouchableOpacity>
 
-        {/* Summary Cards */}
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, styles.summaryExpiring]}>
             <Text style={styles.summaryLabel}>SEGERA{"\n"}KADALUWARSA</Text>
             <Text style={styles.summaryNumber}>
-              {/* Hitung expired + warning */}
-              {inventory.filter(i => i.freshness_status === 'expired' || i.freshness_status === 'warning').length}
+              {inventory.filter((i) => i.freshness_status === "expired" || i.freshness_status === "warning").length}
             </Text>
             <Text style={styles.summaryUnit}>item</Text>
           </View>
           <View style={[styles.summaryCard, styles.summaryFresh]}>
             <Text style={[styles.summaryLabel, { color: "#15803D" }]}>MASIH{"\n"}SEGAR</Text>
             <Text style={[styles.summaryNumber, { color: "#15803D" }]}>
-              {inventory.filter(i => i.freshness_status === 'fresh').length}
+              {inventory.filter((i) => i.freshness_status === "fresh").length}
             </Text>
             <Text style={[styles.summaryUnit, { color: "#15803D" }]}>item</Text>
           </View>
         </View>
 
-        {/* Render List Berdasarkan Group */}
         {loading && !refreshing ? (
           <ActivityIndicator size="large" color="#BB0009" style={{ marginTop: 20 }} />
         ) : (
           Object.keys(groupedInventory).map((categoryName) => (
             <View key={categoryName} style={styles.categorySection}>
               <View style={styles.categoryHeader}>
-                {/* ▼▼▼ FIX: capitalize kategori (sayur -> Sayur, daging_sapi -> Daging Sapi) ▼▼▼ */}
                 <Text style={styles.categoryTitle}>{formatCategoryLabel(categoryName)}</Text>
-                {/* ▲▲▲ */}
                 <View style={styles.categoryBadge}>
-                  <Text style={styles.categoryBadgeText}>
-                    {groupedInventory[categoryName].length} Bahan
-                  </Text>
+                  <Text style={styles.categoryBadgeText}>{groupedInventory[categoryName].length} Bahan</Text>
                 </View>
               </View>
 
-            {groupedInventory[categoryName].map((item) => {
-              const statusInfo = getStatusDisplay(item.freshness_status, item.days_remaining);
-              return (
-                <TouchableOpacity key={item.id} style={styles.stockCard} activeOpacity={0.7}>
-                  <View style={[styles.stockCardBorder, { backgroundColor: statusInfo.color }]} />
-                  <View style={styles.stockCardContent}>
-                    <View style={styles.stockCardInfo}>
-                      <Text style={styles.stockItemName}>{capitalizeEachWord(item.item_name)}</Text>
-                      <Text style={styles.stockItemQty}>{item.quantity} {item.unit}</Text>
-                    </View>
-                    
-                    {/* Container untuk Badge dan Tombol Hapus */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
-                        <Text style={styles.statusBadgeText}>{statusInfo.label}</Text>
+              {groupedInventory[categoryName].map((item) => {
+                const statusInfo = getStatusDisplay(item.freshness_status, item.days_remaining);
+
+                return (
+                  <TouchableOpacity key={item.id} style={styles.stockCard} activeOpacity={0.7}>
+                    <View style={[styles.stockCardBorder, { backgroundColor: statusInfo.color }]} />
+                    <View style={styles.stockCardContent}>
+                      <View style={styles.stockCardInfo}>
+                        <Text style={styles.stockItemName}>{capitalizeEachWord(item.item_name)}</Text>
+                        <Text style={styles.stockItemQty}>
+                          {item.quantity} {item.unit}
+                        </Text>
                       </View>
-                      
-                      {/* TOMBOL HAPUS BARU */}
-                      <TouchableOpacity 
-                        onPress={() => handleDeleteBahan(item)}
-                        style={{ padding: 4 }}
-                      >
-                        <Ionicons name="trash-outline" size={20} color="#BB0009" />
-                      </TouchableOpacity>
+
+                      <View style={styles.actionRow}>
+                        <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
+                          <Text style={styles.statusBadgeText}>{statusInfo.label}</Text>
+                        </View>
+
+                        <TouchableOpacity onPress={() => handleDeleteBahan(item)} style={styles.deleteButton}>
+                          <Ionicons name="trash-outline" size={20} color="#BB0009" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))
         )}
-        
-        {/* State Kosong */}
+
         {!loading && inventory.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>Belum ada bahan di stok Anda.</Text>
@@ -361,12 +327,12 @@ const StokScreen: React.FC = () => {
         visible={filterVisible}
         initialFilter={activeFilter}
         onApply={(newFilter) => {
-          console.log("Filter baru diterima:", newFilter); // <-- CEK DI TERMINAL
+          console.log("Filter baru diterima:", newFilter);
           setActiveFilter(newFilter);
           setFilterVisible(false);
         }}
         onClose={() => setFilterVisible(false)}
-      />    
+      />
     </View>
   );
 };
@@ -566,8 +532,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     color: "#FFFFFF",
   },
-  emptyState: { alignItems: 'center', marginTop: 40 },
-  emptyText: { color: '#949FA2' }
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  deleteButton: {
+    padding: 4,
+  },
+  emptyState: {
+    alignItems: "center",
+    marginTop: 40,
+  },
+  emptyText: {
+    color: "#949FA2",
+  },
 });
 
 export default StokScreen;

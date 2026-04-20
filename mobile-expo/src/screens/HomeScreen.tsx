@@ -15,11 +15,9 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
-// ▼▼▼ FIX: pakai api client terpusat + types + formatter ▼▼▼
 import { api, extractApiError } from "../services/api";
 import { RecommendationItem, RecommendationResponse } from "../types/api";
 import { capitalizeEachWord } from "../utils/formatters";
-// ▲▲▲
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
@@ -41,7 +39,6 @@ const normalizeTitle = (value: string) =>
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  // States
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("User");
   const [expiringItems, setExpiringItems] = useState<InventoryItem[]>([]);
@@ -53,7 +50,6 @@ const HomeScreen: React.FC = () => {
     fetchInitialData();
   }, []);
 
-  // Refresh juga setiap screen Beranda kembali fokus
   useFocusEffect(
     useCallback(() => {
       fetchInitialData();
@@ -64,7 +60,6 @@ const HomeScreen: React.FC = () => {
     setLoading(true);
 
     try {
-      // 1. Ambil User Auth
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -72,6 +67,7 @@ const HomeScreen: React.FC = () => {
       if (user) {
         console.log("LOGGED IN USER ID:", user.id);
       }
+
       if (!user) {
         setRecipes([]);
         setExpiringItems([]);
@@ -79,7 +75,6 @@ const HomeScreen: React.FC = () => {
         return;
       }
 
-      // 2. Ambil User Profile
       const { data: profile } = await supabase
         .from("profiles")
         .select("display_name")
@@ -90,7 +85,6 @@ const HomeScreen: React.FC = () => {
         setUserName(profile.display_name);
       }
 
-      // 3. Ambil Total Count Stok
       const { count } = await supabase
         .from("inventory_stock")
         .select("*", { count: "exact", head: true })
@@ -100,7 +94,6 @@ const HomeScreen: React.FC = () => {
       const currentTotal = count || 0;
       setTotalStock(currentTotal);
 
-      // 4. Ambil Stok (3 teratas untuk list expiry)
       const { data: stock } = await supabase
         .from("inventory_stock")
         .select("*")
@@ -126,7 +119,6 @@ const HomeScreen: React.FC = () => {
 
       setExpiringItems(processedStock);
 
-      // 5. Ambil judul resep yang sudah pernah dimasak user
       const { data: cookedHistory, error: cookedHistoryError } = await supabase
         .from("consumption_history")
         .select("recipe_title")
@@ -143,10 +135,8 @@ const HomeScreen: React.FC = () => {
           .map((title) => normalizeTitle(title))
       );
 
-      // 6. Ambil Rekomendasi AI (Hanya jika stok ada)
       if (currentTotal > 0) {
         try {
-          // Ambil sedikit lebih banyak lalu filter resep yang sudah dimasak
           const res = await api.get<RecommendationResponse>("/recommend", {
             params: { top_k: 8 },
           });
@@ -174,12 +164,15 @@ const HomeScreen: React.FC = () => {
   };
 
   const getBadgeInfo = (days: number) => {
-    if (days <= 0) return { label: "EXPIRED", color: "#BB0009" };
+    if (days <= 0) return { label: "EXPIRED", color: "#000000" };
     if (days === 1) return { label: "BESOK", color: "#BB0009" };
     return { label: `${days} HARI LAGI`, color: days <= 2 ? "#BB0009" : "#FDCB52" };
   };
 
   const getCardColors = (days: number) => {
+    if (days <= 0) {
+      return { backgroundColor: "#F5F5F5", borderColor: "#E5E7EB" };
+    }
     if (days <= 2) {
       return { backgroundColor: "#FEF2F2", borderColor: "#FEE2E2" };
     }
@@ -214,7 +207,6 @@ const HomeScreen: React.FC = () => {
           />
         }
       >
-        {/* Header */}
         <View style={styles.header}>
           <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
           <View style={styles.headerRight}>
@@ -235,7 +227,6 @@ const HomeScreen: React.FC = () => {
           Kamu punya {expiringItems.length} bahan yang harus kamu perhatikan minggu ini.
         </Text>
 
-        {/* Segera Kedaluwarsa */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Segera Kedaluwarsa</Text>
           <TouchableOpacity onPress={() => navigation.navigate("Main", { screen: "Stok" })}>
@@ -273,10 +264,16 @@ const HomeScreen: React.FC = () => {
           );
         })}
 
-        {/* Rekomendasi Chef AI */}
         <View style={[styles.sectionHeader, { marginTop: 28 }]}>
           <Text style={styles.sectionTitle}>Rekomendasi Chef AI</Text>
-          <TouchableOpacity onPress={() => navigation.navigate("Main", { screen: "ChefAI" , params: { screen: "RecipeRecommendation" } })}>
+          <TouchableOpacity
+            onPress={() =>
+              navigation.navigate("Main", {
+                screen: "ChefAI",
+                params: { screen: "RecipeRecommendation" },
+              })
+            }
+          >
             <Text style={styles.seeAll}>LIHAT SEMUA</Text>
           </TouchableOpacity>
         </View>
@@ -315,7 +312,6 @@ const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         ))}
 
-        {/* Active Stock Banner */}
         <TouchableOpacity
           style={styles.stockBanner}
           onPress={() => navigation.navigate("Main", { screen: "Stok" })}

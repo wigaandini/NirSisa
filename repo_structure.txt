@@ -1,5 +1,5 @@
 REPOSITORY STRUCTURE REPORT
-Generated at : 2026-04-20 14:13:22
+Generated at : 2026-04-20 20:01:09
 Target dir   : /Users/erdiantiwigaputriandini/Documents/Kuliah/Semester 8/PPT/Tugas 4 - Implementasi/NirSisa
 
 Ignored dirs : .git node_modules vendor dist build .next .nuxt coverage .cache .idea .vscode __pycache__ .venv venv tmp logs
@@ -51,6 +51,7 @@ DIRECTORY TREE
 │   │   │   ├── __init__.py
 │   │   │   ├── health.py
 │   │   │   ├── inventory.py
+│   │   │   ├── notifications.py
 │   │   │   ├── recipes.py
 │   │   │   └── recommend.py
 │   │   ├── core
@@ -69,11 +70,16 @@ DIRECTORY TREE
 │   │   ├── schemas
 │   │   │   ├── __init__.py
 │   │   │   ├── inventory.py
+│   │   │   ├── notification.py
 │   │   │   └── recipe.py
-│   │   └── services
-│   │       ├── __init__.py
-│   │       ├── inventory_service.py
-│   │       └── normalizer.py
+│   │   ├── services
+│   │   │   ├── __init__.py
+│   │   │   ├── inventory_service.py
+│   │   │   ├── normalizer.py
+│   │   │   └── notification_service.py
+│   │   └── tasks
+│   │       ├──  __init__.py
+│   │       └── expiry_checker.py
 │   ├── conftest.py
 │   ├── docker-compose.yml
 │   ├── package-lock.json
@@ -87,6 +93,7 @@ DIRECTORY TREE
 │       ├── test_recommender.py
 │       └── test_spi.py
 ├── database
+│   ├── .env
 │   ├── artifacts
 │   │   ├── recipe_ids.json
 │   │   ├── tfidf_matrix.joblib
@@ -99,7 +106,9 @@ DIRECTORY TREE
 │   │   ├── 001_schema.sql
 │   │   ├── 002_rls_policies.sql
 │   │   ├── 003_seed_shelf_life.sql
-│   │   └── 004_restructure_categories.sql
+│   │   ├── 004_restructure_categories.sql
+│   │   ├── 005_add_quantity.sql
+│   │   └── 006_notification_enhancements.sql
 │   ├── requirements.txt
 │   └── seed
 │       ├── seed_recipes.py
@@ -134,9 +143,13 @@ DIRECTORY TREE
 │   │   │   └── AuthContext.tsx
 │   │   ├── data
 │   │   │   └── recipes.ts
+│   │   ├── hooks
+│   │   │   └── useNotifications.ts
 │   │   ├── navigation
 │   │   │   └── AppNavigator.tsx
 │   │   ├── screens
+│   │   │   ├── FavoriteRecipesScreen.tsx
+│   │   │   ├── HistoryDetailScreen.tsx
 │   │   │   ├── HomeScreen.tsx
 │   │   │   ├── LoginScreen.tsx
 │   │   │   ├── NotificationScreen.tsx
@@ -150,6 +163,7 @@ DIRECTORY TREE
 │   │   │   └── StokScreen.tsx
 │   │   ├── services
 │   │   │   ├── api.ts
+│   │   │   ├── notifications.ts
 │   │   │   └── supabase.ts
 │   │   ├── types
 │   │   │   └── api.ts
@@ -163,7 +177,7 @@ DIRECTORY TREE
 ==================================================
 FILE SUMMARY
 ==================================================
-- .DS_Store | lines:        6 | size: 10244 bytes | type: Apple Desktop Services Store
+- .DS_Store | lines:       25 | size: 14340 bytes | type: Apple Desktop Services Store
 - .expo/README.md | lines:       15 | size: 891 bytes | type: ASCII text
 - .expo/settings.json | lines:        8 | size: 120 bytes | type: JSON data
 - .github/workflows/backend-ci.yml | lines:       60 | size: 1384 bytes | type: ASCII text
@@ -184,42 +198,49 @@ FILE SUMMARY
 - EDA Dataset/v2_04_dashboard.png | lines:      951 | size: 300504 bytes | type: PNG image data, 2635 x 1661, 8-bit/color RGBA, non-interlaced
 - EDA Dataset/v2_05_readiness.png | lines:      545 | size: 151403 bytes | type: PNG image data, 2371 x 876, 8-bit/color RGBA, non-interlaced
 - README.md | lines:        0 | size: 9 bytes | type: ASCII text, with no line terminators
+- backend/.DS_Store | lines:       22 | size: 8196 bytes | type: Apple Desktop Services Store
 - backend/.dockerignore | lines:        7 | size: 50 bytes | type: ASCII text
 - backend/.gitignore | lines:        8 | size: 85 bytes | type: ASCII text
 - backend/Dockerfile | lines:       20 | size: 458 bytes | type: ASCII text
 - backend/Procfile | lines:        1 | size: 54 bytes | type: ASCII text
+- backend/app/.DS_Store | lines:        0 | size: 8196 bytes | type: Apple Desktop Services Store
 - backend/app/__init__.py | lines:        0 | size: 0 bytes | type: empty
 - backend/app/ai/__init__.py | lines:       19 | size: 458 bytes | type: Python script text executable, ASCII text
 - backend/app/ai/cbf.py | lines:      116 | size: 4060 bytes | type: Python script text executable, Unicode text, UTF-8 text
 - backend/app/ai/preprocessing.py | lines:       16 | size: 502 bytes | type: Python script text executable, ASCII text
 - backend/app/ai/recommend.py | lines:       68 | size: 2421 bytes | type: ASCII text
-- backend/app/ai/recommender.py | lines:      170 | size: 5821 bytes | type: Python script text executable, Unicode text, UTF-8 text
+- backend/app/ai/recommender.py | lines:      195 | size: 6494 bytes | type: Python script text executable, Unicode text, UTF-8 text
 - backend/app/ai/spi.py | lines:       58 | size: 1764 bytes | type: Python script text executable, Unicode text, UTF-8 text
 - backend/app/api/__init__.py | lines:        0 | size: 0 bytes | type: empty
 - backend/app/api/health.py | lines:       25 | size: 733 bytes | type: Python script text executable, ASCII text
 - backend/app/api/inventory.py | lines:      174 | size: 5610 bytes | type: Python script text executable, Unicode text, UTF-8 text
+- backend/app/api/notifications.py | lines:      101 | size: 3020 bytes | type: Python script text executable, ASCII text
 - backend/app/api/recipes.py | lines:       67 | size: 1828 bytes | type: Python script text executable, ASCII text
-- backend/app/api/recommend.py | lines:      120 | size: 4040 bytes | type: Python script text executable, ASCII text
+- backend/app/api/recommend.py | lines:      106 | size: 3514 bytes | type: Python script text executable, ASCII text
 - backend/app/core/__init__.py | lines:        0 | size: 0 bytes | type: empty
 - backend/app/core/auth.py | lines:       48 | size: 1803 bytes | type: Python script text executable, ASCII text
 - backend/app/core/config.py | lines:       28 | size: 692 bytes | type: Python script text executable, ASCII text
 - backend/app/core/supabase.py | lines:       12 | size: 334 bytes | type: Python script text executable, ASCII text
-- backend/app/data/recipe_data.pkl | lines:    71108 | size: 16044514 bytes | type: data
-- backend/app/main.py | lines:      120 | size: 4198 bytes | type: Python script text executable, ASCII text
-- backend/app/ml_models/recipe_matrix.pkl | lines:    18811 | size: 3054243 bytes | type: data
-- backend/app/ml_models/tfidf_vectorizer.pkl | lines:      530 | size: 237731 bytes | type: data
+- backend/app/data/recipe_data.pkl | lines:    70674 | size: 17197043 bytes | type: data
+- backend/app/main.py | lines:      158 | size: 5175 bytes | type: Python script text executable, Unicode text, UTF-8 text
+- backend/app/ml_models/recipe_matrix.pkl | lines:    19143 | size: 3040219 bytes | type: data
+- backend/app/ml_models/tfidf_vectorizer.pkl | lines:      536 | size: 238356 bytes | type: data
 - backend/app/models/__init__.py | lines:        0 | size: 0 bytes | type: empty
 - backend/app/schemas/__init__.py | lines:        0 | size: 0 bytes | type: empty
 - backend/app/schemas/inventory.py | lines:       86 | size: 3027 bytes | type: Python script text executable, ASCII text
-- backend/app/schemas/recipe.py | lines:       57 | size: 1723 bytes | type: Python script text executable, Unicode text, UTF-8 text
+- backend/app/schemas/notification.py | lines:       23 | size: 647 bytes | type: Python script text executable, ASCII text
+- backend/app/schemas/recipe.py | lines:       53 | size: 1545 bytes | type: Python script text executable, Unicode text, UTF-8 text
 - backend/app/services/__init__.py | lines:        0 | size: 0 bytes | type: empty
 - backend/app/services/inventory_service.py | lines:      260 | size: 8513 bytes | type: Python script text executable, Unicode text, UTF-8 text
 - backend/app/services/normalizer.py | lines:      392 | size: 14154 bytes | type: Python script text executable, Unicode text, UTF-8 text
+- backend/app/services/notification_service.py | lines:      241 | size: 7794 bytes | type: Python script text executable, Unicode text, UTF-8 text
+- backend/app/tasks/ __init__.py | lines:        0 | size: 0 bytes | type: empty
+- backend/app/tasks/expiry_checker.py | lines:      202 | size: 6841 bytes | type: Python script text executable, Unicode text, UTF-8 text
 - backend/conftest.py | lines:        3 | size: 83 bytes | type: Python script text executable, ASCII text
 - backend/docker-compose.yml | lines:       12 | size: 235 bytes | type: ASCII text
 - backend/package-lock.json | lines:        6 | size: 86 bytes | type: JSON data
 - backend/railway.toml | lines:        9 | size: 184 bytes | type: ASCII text
-- backend/requirements.txt | lines:       24 | size: 403 bytes | type: ASCII text
+- backend/requirements.txt | lines:       27 | size: 438 bytes | type: ASCII text
 - backend/tests/__init__.py | lines:        0 | size: 0 bytes | type: empty
 - backend/tests/test_evaluation.py | lines:      296 | size: 12079 bytes | type: Python script text executable, Unicode text, UTF-8 text
 - backend/tests/test_health.py | lines:       65 | size: 1774 bytes | type: Python script text executable, ASCII text
@@ -227,34 +248,39 @@ FILE SUMMARY
 - backend/tests/test_recommender.py | lines:      280 | size: 12086 bytes | type: Python script text executable, ASCII text
 - backend/tests/test_spi.py | lines:      117 | size: 3681 bytes | type: Python script text executable, Unicode text, UTF-8 text
 - database/.DS_Store | lines:       12 | size: 8196 bytes | type: Apple Desktop Services Store
-- database/artifacts/recipe_ids.json | lines:        0 | size: 93505 bytes | type: JSON data
-- database/artifacts/tfidf_matrix.joblib | lines:    18811 | size: 3054243 bytes | type: data
-- database/artifacts/tfidf_vectorizer.joblib | lines:      530 | size: 237731 bytes | type: data
+- database/.env | lines:        1 | size: 299 bytes | type: ASCII text
+- database/artifacts/recipe_ids.json | lines:        0 | size: 92511 bytes | type: JSON data
+- database/artifacts/tfidf_matrix.joblib | lines:    19143 | size: 3040219 bytes | type: data
+- database/artifacts/tfidf_vectorizer.joblib | lines:      536 | size: 238356 bytes | type: data
 - database/erd.dbml | lines:      169 | size: 5682 bytes | type: ASCII text
 - database/erd_diagram.md | lines:      164 | size: 5155 bytes | type: ASCII text
 - database/erd_nirsisa.png | lines:     1059 | size: 385319 bytes | type: PNG image data, 3450 x 2132, 8-bit/color RGBA, non-interlaced
 - database/generate_erd_image.py | lines:      271 | size: 9569 bytes | type: Python script text executable, ASCII text
-- database/migrations/001_schema.sql | lines:      219 | size: 9793 bytes | type: ASCII text
+- database/migrations/001_schema.sql | lines:      218 | size: 9290 bytes | type: ASCII text
 - database/migrations/002_rls_policies.sql | lines:      133 | size: 4909 bytes | type: ASCII text
 - database/migrations/003_seed_shelf_life.sql | lines:      244 | size: 30739 bytes | type: Unicode text, UTF-8 text
 - database/migrations/004_restructure_categories.sql | lines:      179 | size: 8034 bytes | type: Unicode text, UTF-8 text
+- database/migrations/005_add_quantity.sql | lines:        5 | size: 262 bytes | type: Unicode text, UTF-8 text
+- database/migrations/006_notification_enhancements.sql | lines:        7 | size: 418 bytes | type: Unicode text, UTF-8 text
 - database/requirements.txt | lines:        2 | size: 37 bytes | type: ASCII text
-- database/seed/seed_recipes.py | lines:      133 | size: 4194 bytes | type: Python script text executable, ASCII text
+- database/seed/seed_recipes.py | lines:      135 | size: 4306 bytes | type: Python script text executable, ASCII text
 - database/seed/update_recipes_v3.py | lines:      191 | size: 6054 bytes | type: Python script text executable, Unicode text, UTF-8 text
-- database/seed/vectorize_recipes.py | lines:      358 | size: 14356 bytes | type: Python script text executable, Unicode text, UTF-8 text
+- database/seed/vectorize_recipes.py | lines:      272 | size: 11240 bytes | type: Python script text executable, Unicode text, UTF-8 text
 - generate_repo_structure.sh | lines:      124 | size: 2610 bytes | type: Bourne-Again shell script text executable, ASCII text
+- mobile-expo/.DS_Store | lines:        0 | size: 6148 bytes | type: Apple Desktop Services Store
 - mobile-expo/.expo/README.md | lines:       13 | size: 756 bytes | type: ASCII text
 - mobile-expo/.expo/devices.json | lines:        3 | size: 20 bytes | type: JSON data
 - mobile-expo/.gitignore | lines:       41 | size: 440 bytes | type: ASCII text
-- mobile-expo/App.tsx | lines:       58 | size: 1373 bytes | type: Java source, ASCII text
-- mobile-expo/app.json | lines:       37 | size: 865 bytes | type: JSON data
+- mobile-expo/App.tsx | lines:       64 | size: 1588 bytes | type: Java source, ASCII text
+- mobile-expo/app.json | lines:       36 | size: 864 bytes | type: JSON data
 - mobile-expo/assets/adaptive-icon.png | lines:       79 | size: 17547 bytes | type: PNG image data, 1024 x 1024, 8-bit colormap, non-interlaced
 - mobile-expo/assets/favicon.png | lines:        5 | size: 1466 bytes | type: PNG image data, 48 x 48, 8-bit gray+alpha, interlaced
 - mobile-expo/assets/icon.png | lines:      107 | size: 22380 bytes | type: PNG image data, 1024 x 1024, 8-bit colormap, non-interlaced
 - mobile-expo/assets/splash-icon.png | lines:       79 | size: 17547 bytes | type: PNG image data, 1024 x 1024, 8-bit colormap, non-interlaced
 - mobile-expo/index.ts | lines:        8 | size: 307 bytes | type: Java source, ASCII text
-- mobile-expo/package-lock.json | lines:    10106 | size: 382550 bytes | type: JSON data
-- mobile-expo/package.json | lines:       38 | size: 1088 bytes | type: JSON data
+- mobile-expo/package-lock.json | lines:    10500 | size: 396137 bytes | type: JSON data
+- mobile-expo/package.json | lines:       40 | size: 1156 bytes | type: JSON data
+- mobile-expo/src/.DS_Store | lines:        0 | size: 8196 bytes | type: Apple Desktop Services Store
 - mobile-expo/src/assets/images/bg_splash.png | lines:    18242 | size: 5197572 bytes | type: PNG image data, 1572 x 3408, 8-bit/color RGBA, non-interlaced
 - mobile-expo/src/assets/images/logo.png | lines:     2231 | size: 565471 bytes | type: PNG image data, 1080 x 616, 8-bit/color RGBA, non-interlaced
 - mobile-expo/src/components/FilterModal.tsx | lines:      344 | size: 9428 bytes | type: Java source, Unicode text, UTF-8 text
@@ -262,23 +288,27 @@ FILE SUMMARY
 - mobile-expo/src/components/TambahBahanModal.tsx | lines:      468 | size: 14936 bytes | type: Java source, Unicode text, UTF-8 text
 - mobile-expo/src/context/AuthContext.tsx | lines:       64 | size: 1731 bytes | type: Java source, ASCII text
 - mobile-expo/src/data/recipes.ts | lines:      144 | size: 8107 bytes | type: Unicode text, UTF-8 text
-- mobile-expo/src/navigation/AppNavigator.tsx | lines:      189 | size: 5715 bytes | type: Java source, Unicode text, UTF-8 text
+- mobile-expo/src/hooks/useNotifications.ts | lines:       69 | size: 2300 bytes | type: Java source, ASCII text
+- mobile-expo/src/navigation/AppNavigator.tsx | lines:      197 | size: 6122 bytes | type: Java source, Unicode text, UTF-8 text
+- mobile-expo/src/screens/FavoriteRecipesScreen.tsx | lines:      127 | size: 4965 bytes | type: Java source, ASCII text
+- mobile-expo/src/screens/HistoryDetailScreen.tsx | lines:      171 | size: 6706 bytes | type: Java source, ASCII text
 - mobile-expo/src/screens/HomeScreen.tsx | lines:      491 | size: 14051 bytes | type: Java source, Unicode text, UTF-8 text
 - mobile-expo/src/screens/LoginScreen.tsx | lines:      366 | size: 9968 bytes | type: Java source, Unicode text, UTF-8 text
 - mobile-expo/src/screens/NotificationScreen.tsx | lines:      346 | size: 10480 bytes | type: Java source, Unicode text, UTF-8 text
 - mobile-expo/src/screens/PlaceholderScreen.tsx | lines:       50 | size: 1217 bytes | type: Java source, ASCII text
-- mobile-expo/src/screens/ProfilScreen.tsx | lines:      910 | size: 28310 bytes | type: Java source, Unicode text, UTF-8 text
-- mobile-expo/src/screens/RecipeDetailScreen.tsx | lines:      996 | size: 28961 bytes | type: Java source, Unicode text, UTF-8 text
+- mobile-expo/src/screens/ProfilScreen.tsx | lines:      912 | size: 28277 bytes | type: Java source, Unicode text, UTF-8 text
+- mobile-expo/src/screens/RecipeDetailScreen.tsx | lines:     1010 | size: 31263 bytes | type: Java source, Unicode text, UTF-8 text
 - mobile-expo/src/screens/RecipeRecommendationScreen.tsx | lines:      556 | size: 17463 bytes | type: Java source, Unicode text, UTF-8 text
-- mobile-expo/src/screens/RiwayatScreen.tsx | lines:      308 | size: 8731 bytes | type: Java source, Unicode text, UTF-8 text
+- mobile-expo/src/screens/RiwayatScreen.tsx | lines:      323 | size: 9153 bytes | type: Java source, ASCII text
 - mobile-expo/src/screens/SignUpScreen.tsx | lines:      407 | size: 11410 bytes | type: Java source, Unicode text, UTF-8 text
 - mobile-expo/src/screens/SplashScreen.tsx | lines:      223 | size: 5466 bytes | type: Java source, ASCII text
 - mobile-expo/src/screens/StokScreen.tsx | lines:      572 | size: 17607 bytes | type: Java source, Unicode text, UTF-8 text
 - mobile-expo/src/services/api.ts | lines:       47 | size: 1608 bytes | type: Java source, Unicode text, UTF-8 text
+- mobile-expo/src/services/notifications.ts | lines:      146 | size: 4361 bytes | type: Java source, Unicode text, UTF-8 text
 - mobile-expo/src/services/supabase.ts | lines:       21 | size: 858 bytes | type: Java source, ASCII text
-- mobile-expo/src/types/api.ts | lines:       86 | size: 3064 bytes | type: Unicode text, UTF-8 text
+- mobile-expo/src/types/api.ts | lines:       90 | size: 3240 bytes | type: Unicode text, UTF-8 text
 - mobile-expo/src/utils/colors.ts | lines:       22 | size: 400 bytes | type: ASCII text
 - mobile-expo/src/utils/formatters.ts | lines:       44 | size: 1480 bytes | type: ASCII text
 - mobile-expo/tsconfig.json | lines:        6 | size: 111 bytes | type: JSON data
-- repo_structure.txt | lines:      282 | size: 19354 bytes | type: Unicode text, UTF-8 text
+- repo_structure.txt | lines:      312 | size: 21827 bytes | type: Unicode text, UTF-8 text
 - requirements.txt | lines:      115 | size: 2000 bytes | type: ASCII text
