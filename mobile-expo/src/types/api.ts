@@ -24,6 +24,8 @@ export interface RecommendationItem {
   final_score: number;            // (1-λ)*cosine + λ*SPI
   match_percentage: number;       // 0..100 — % bahan user yg cocok
   explanation: string | null;     // teks XAI
+  id: number; // Tambahkan baris ini (gunakan number karena ID di DB Anda adalah integer/bigint)
+
 }
 
 export interface RecommendationResponse {

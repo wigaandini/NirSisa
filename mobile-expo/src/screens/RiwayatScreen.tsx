@@ -16,9 +16,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
-// ▼▼▼ FIX: capitalize judul resep di display ▼▼▼
 import { capitalizeEachWord } from "../utils/formatters";
-// ▲▲▲
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
@@ -147,7 +145,12 @@ const RiwayatScreen: React.FC = () => {
             {history.map((item, index) => {
               const isLast = index === history.length - 1;
               return (
-                <View key={item.id} style={styles.timelineRow}>
+                <TouchableOpacity 
+                  key={item.id} 
+                  style={styles.timelineRow}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate("HistoryDetail", { historyId: item.id })}
+                >
                   <View style={styles.timelineLeft}>
                     <View style={[styles.timelineLine, index === 0 && styles.timelineLineHidden]} />
                     <View style={styles.timelineCircle}>
@@ -157,15 +160,19 @@ const RiwayatScreen: React.FC = () => {
                   </View>
 
                   <View style={styles.timelineCard}>
-                    <Text style={styles.cardDate}>{formatDate(item.cooked_at)}</Text>
-                    {/* ▼▼▼ FIX: capitalize recipe title ▼▼▼ */}
-                    <Text style={styles.cardName}>{capitalizeEachWord(item.recipe_title)}</Text>
-                    {/* ▲▲▲ */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cardDate}>{formatDate(item.cooked_at)}</Text>
+                        <Text style={styles.cardName}>{capitalizeEachWord(item.recipe_title)}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#BFD3D6" style={{ marginTop: 4 }} />
+                    </View>
+                    
                     <Text style={styles.cardDesc}>
                       Berhasil mengolah {item.ingredients_count} bahan makanan.
                     </Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -302,8 +309,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#656C6E",
   },
-  emptyState: { alignItems: 'center', marginTop: 40, gap: 10 },
-  emptyText: { fontFamily: 'Inter_400Regular', color: '#949FA2', fontSize: 15 }
+  emptyState: { 
+    alignItems: 'center', 
+    marginTop: 40, 
+    gap: 10 
+  },
+  emptyText: { 
+    fontFamily: 'Inter_400Regular', 
+    color: '#949FA2', 
+    fontSize: 15 
+  }
 });
 
 export default RiwayatScreen;

@@ -14,6 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ChefAIStackParamList } from "../navigation/AppNavigator";
 import { api, extractApiError } from "../services/api";
+import { supabase } from "../services/supabase"; // pastikan import supabase
+import { useAuth } from "../context/AuthContext"; // pastikan import auth context
 import {
   InventoryItemResponse,
   ReconciliationRequest,
@@ -358,23 +360,54 @@ const StepRow: React.FC<{ item: StepView; isLast: boolean }> = ({ item, isLast }
 
 const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { recipe } = route.params;
+    if (!recipe) {
+    return (
+      <View style={styles.center}>
+        <Text>Resep tidak ditemukan.</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={{ color: '#BB0009', marginTop: 10 }}>Kembali</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+  const { session } = useAuth(); // Ambil session di sini
 
   const [inventory, setInventory] = useState<InventoryItemResponse[]>([]);
   const [loadingInventory, setLoadingInventory] = useState(true);
   const [reconciling, setReconciling] = useState(false);
+  const [isLiked, setIsLiked] = useState(false); // Tambahkan ini
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await api.get<InventoryItemResponse[]>("/inventory");
-        setInventory(res.data || []);
-      } catch (err) {
-        console.warn("[RecipeDetail] gagal fetch inventory:", extractApiError(err));
-      } finally {
-        setLoadingInventory(false);
+
+useEffect(() => {
+  const initializeData = async () => {
+    // 1. Fetch Inventori (Wajib agar status bahan muncul)
+    try {
+      setLoadingInventory(true);
+      const res = await api.get<InventoryItemResponse[]>("/inventory");
+      setInventory(res.data || []);
+    } catch (err) {
+      console.warn("Gagal fetch inventory:", err);
+    } finally {
+      setLoadingInventory(false);
+    }
+
+    // 2. Cek Status Like
+    if (session?.user?.id && (recipe.id || recipe.index)) {
+      const dbId = recipe.id || (recipe.index !== undefined ? recipe.index + 1 : null);
+      if (dbId) {
+        const { data } = await supabase
+          .from("user_favorites")
+          .select("id")
+          .eq("user_id", session.user.id)
+          .eq("recipe_id", dbId)
+          .maybeSingle();
+        if (data) setIsLiked(true);
       }
-    })();
-  }, []);
+    }
+  };
+
+  initializeData();
+}, [recipe.id, recipe.index, session?.user?.id]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // BUILD INGREDIENT LIST
@@ -514,6 +547,36 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     }));
   }, [recipe.steps]);
 
+  const handleToggleLike = async () => {
+    if (!session?.user?.id || recipe.index === undefined) return;
+
+    // Samakan dengan ID database (index + 1)
+    const dbId = recipe.index + 1;
+
+    try {
+      if (isLiked) {
+        await supabase
+          .from("user_favorites")
+          .delete()
+          .eq("user_id", session.user.id)
+          .eq("recipe_id", dbId);
+        setIsLiked(false);
+      } else {
+        const { error } = await supabase
+          .from("user_favorites")
+          .insert({ 
+            user_id: session.user.id, 
+            recipe_id: dbId 
+          });
+        
+        if (error) throw error;
+        setIsLiked(true);
+      }
+    } catch (err: any) {
+      console.error("Gagal toggle favorit:", err.message);
+    }
+  };
+
   const payloadIngredients = useMemo(() => {
     const aggregated = new Map<
       string,
@@ -638,20 +701,26 @@ const RecipeDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             <Ionicons name="chevron-back" size={22} color="#2B2B2B" />
           </TouchableOpacity>
           <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <TouchableOpacity style={styles.heartButton}>
-            <Ionicons name="heart-outline" size={22} color="#2B2B2B" />
-          </TouchableOpacity>
+          <TouchableOpacity style={styles.heartButton} onPress={handleToggleLike}>
+          <Ionicons 
+            name={isLiked ? "heart" : "heart-outline"} // Berubah jadi hati penuh jika isLiked true
+            size={22} 
+            color={isLiked ? "#BB0009" : "#2B2B2B"} // Berubah warna jadi merah jika isLiked true
+          />         
+        </TouchableOpacity>
         </View>
 
         <Text style={styles.title}>{capitalizeEachWord(recipe.title)}</Text>
 
-        <View style={styles.matchBanner}>
-          <Ionicons name="sparkles" size={16} color="#BB0009" />
-          <Text style={styles.matchBannerText}>
-            {recipe.match_percentage.toFixed(0)}% bahan Anda cocok • Skor final{" "}
-            {(recipe.final_score * 100).toFixed(0)}%
-          </Text>
-        </View>
+        {typeof recipe.match_percentage === 'number' && (
+          <View style={styles.matchBanner}>
+            <Ionicons name="sparkles" size={16} color="#BB0009" />
+            <Text style={styles.matchBannerText}>
+              {recipe.match_percentage.toFixed(0)}% bahan Anda cocok • Skor final{" "}
+              {((recipe.final_score || 0) * 100).toFixed(0)}%
+            </Text>
+          </View>
+        )}
 
         {hasIssues && (
           <View style={styles.warningBanner}>
@@ -930,6 +999,12 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 16,
     color: "#FFFFFF",
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
 });
 

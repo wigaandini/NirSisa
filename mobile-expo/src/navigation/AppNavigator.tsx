@@ -19,6 +19,8 @@ import RiwayatScreen from "../screens/RiwayatScreen";
 import RecipeRecommendationScreen from "../screens/RecipeRecommendationScreen";
 import RecipeDetailScreen from "../screens/RecipeDetailScreen";
 import NotificationScreen from "../screens/NotificationScreen";
+import FavoriteRecipesScreen from "../screens/FavoriteRecipesScreen";
+import HistoryDetailScreen from "../screens/HistoryDetailScreen"; 
 // ▼▼▼ FIX: type untuk full recipe object yang dikirim antar screen ▼▼▼
 import { RecommendationItem } from "../types/api";
 // ▲▲▲
@@ -41,6 +43,8 @@ export type RootStackParamList = {
   SignUp: undefined;
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   Notification: undefined;
+  HistoryDetail: { historyId: string }; // Tambahkan ini
+  FavoriteRecipes: undefined; // Tambahkan ini
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -139,6 +143,10 @@ const AppNavigator: React.FC = () => {
         <>
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="Notification" component={NotificationScreen} />
+          <Stack.Screen name="HistoryDetail" component={HistoryDetailScreen} />
+          <Stack.Screen name="FavoriteRecipes" component={FavoriteRecipesScreen} />
+
+
         </>
       ) : (
         <>
