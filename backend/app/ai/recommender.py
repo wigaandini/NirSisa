@@ -61,7 +61,8 @@ def get_recommendations(
     ingredient_names = [item.name.lower().strip() for item in inventory]
 
     # Step 1: Cosine Similarity
-    user_text = " ".join(ingredient_names)
+    # PENTING: gabung dengan koma agar sesuai dengan comma_tokenizer di cbf.py
+    user_text = ", ".join(ingredient_names)
     cos_scores = kb.compute_cosine_scores(user_text)
 
     # Step 2: SPI Scores
