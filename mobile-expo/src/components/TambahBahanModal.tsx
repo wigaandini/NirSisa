@@ -174,25 +174,32 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={handleClose}>
+      {/* Backdrop — tap luar untuk tutup */}
       <TouchableWithoutFeedback onPress={handleClose}>
         <Animated.View style={[styles.backdrop, { opacity: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }) }]} />
       </TouchableWithoutFeedback>
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.kavWrapper} pointerEvents="box-none">        
-          <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}>
-          <View style={styles.dragHandle} />
-          
-          <View style={styles.sheetHeader}>
-            <View>
-              <Text style={styles.sheetTitle}>Tambah Bahan</Text>
-              <Text style={styles.sheetSubtitle}>Lacak inventaris makanan Anda</Text>
-            </View>
-            <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-              <Ionicons name="close" size={18} color="#2B2B2B" />
-            </TouchableOpacity>
-          </View>
+      {/* Sheet selalu anchor di bawah — TIDAK ikut naik saat keyboard muncul */}
+      <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]} pointerEvents="auto">
+        <View style={styles.dragHandle} />
 
-          <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss} contentContainerStyle={{ paddingBottom: 200 }} >
+        <View style={styles.sheetHeader}>
+          <View>
+            <Text style={styles.sheetTitle}>Tambah Bahan</Text>
+            <Text style={styles.sheetSubtitle}>Lacak inventaris makanan Anda</Text>
+          </View>
+          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+            <Ionicons name="close" size={18} color="#2B2B2B" />
+          </TouchableOpacity>
+        </View>
+
+        {/* KAV hanya mengecilkan area scroll — sheet tidak bergerak */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={16}
+        >
+          <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }} >
             
             <Text style={styles.fieldLabel}>NAMA BAHAN</Text>
             <TextInput style={styles.textInput} placeholder="Contoh: Wortel" value={nama} onChangeText={handleNamaChange} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} importantForAutofill="no" selectTextOnFocus={true} />
@@ -254,10 +261,9 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
               <Text style={styles.saveButtonText}>Simpan ke Inventaris</Text>
             </TouchableOpacity>
 
-            <View style={{ height: 100 }} />
           </ScrollView>
-        </Animated.View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </Animated.View>
     </Modal>
   );
 };
@@ -267,16 +273,12 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "#000000",
   },
-  kavWrapper: {
-    flex: 1,
-    justifyContent: "flex-end",
+  sheet: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-  },
-  sheet: {
-    maxHeight: SCREEN_HEIGHT * 0.9, 
+    height: SCREEN_HEIGHT * 0.88,
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -287,7 +289,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 12,
-    width: "100%",
   },
   dragHandle: {
     width: 40,
