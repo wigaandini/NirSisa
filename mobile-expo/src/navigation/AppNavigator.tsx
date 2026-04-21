@@ -185,15 +185,19 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Wrapper lifts the entire Chef AI item above the tab bar
+  // Wrapper diperluas ke atas agar circle yang float masih bisa di-tap
   chefAIWrapper: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "flex-start",
-    marginTop: -24,          // float the circle above the tab bar top edge
+    justifyContent: "flex-end",
+    paddingBottom: 8,
+    marginTop: -16,
+    paddingTop: 16,
   },
 
   chefAICircle: {
+    position: "absolute",
+    top: 0,
     width: 48,
     height: 48,
     borderRadius: 9999,
@@ -211,7 +215,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.55,
     color: "#94A3B8",
-    marginTop: 4,
   },
 
   chefAILabelActive: {
