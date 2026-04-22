@@ -1,14 +1,14 @@
 import React from "react";
-import { View, StyleSheet, Platform, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform, ActivityIndicator } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import {
   createNativeStackNavigator,
   NativeStackScreenProps,
 } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import {
-  NavigatorScreenParams,
-} from "@react-navigation/native";
+import { NavigatorScreenParams } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import LoginScreen from "../screens/LoginScreen";
 import SignUpScreen from "../screens/SignUpScreen";
@@ -20,10 +20,8 @@ import RecipeRecommendationScreen from "../screens/RecipeRecommendationScreen";
 import RecipeDetailScreen from "../screens/RecipeDetailScreen";
 import NotificationScreen from "../screens/NotificationScreen";
 import FavoriteRecipesScreen from "../screens/FavoriteRecipesScreen";
-import HistoryDetailScreen from "../screens/HistoryDetailScreen"; 
-// ▼▼▼ FIX: type untuk full recipe object yang dikirim antar screen ▼▼▼
+import HistoryDetailScreen from "../screens/HistoryDetailScreen";
 import { RecommendationItem } from "../types/api";
-// ▲▲▲
 
 export type ChefAIStackParamList = {
   RecipeRecommendation: undefined;
@@ -43,30 +41,37 @@ export type RootStackParamList = {
   SignUp: undefined;
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   Notification: undefined;
-  HistoryDetail: { historyId: string }; // Tambahkan ini
-  FavoriteRecipes: undefined; // Tambahkan ini
+  HistoryDetail: { historyId: string };
+  FavoriteRecipes: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const ChefAIStack = createNativeStackNavigator<ChefAIStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const TAB_ICONS: Record<
-  keyof MainTabParamList,
-  { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }
-> = {
-  Beranda: { active: "grid", inactive: "grid-outline" },
-  Stok: { active: "file-tray-full", inactive: "file-tray-full-outline" },
-  ChefAI: { active: "sparkles", inactive: "sparkles-outline" },
-  Riwayat: { active: "time", inactive: "time-outline" },
-  Profil: { active: "person", inactive: "person-outline" },
+// Floating Chef AI button — rendered via tabBarButton so it can float above the bar
+const ChefAIFloatingButton = ({ onPress, accessibilityState }: any) => {
+  const focused = accessibilityState?.selected;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.chefAIWrapper}
+      android_ripple={{ color: "transparent" }}
+    >
+      <LinearGradient
+        colors={["#B9071E", "#FDCB52"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.chefAICircle}
+      >
+        <Ionicons name="sparkles" size={22} color="#FFFFFF" />
+      </LinearGradient>
+      <Text style={[styles.chefAILabel, focused && styles.chefAILabelActive]}>
+        CHEF AI
+      </Text>
+    </Pressable>
+  );
 };
-
-const ChefAITabIcon = ({ focused, size }: { focused: boolean; size: number }) => (
-  <View style={styles.chefAIButton}>
-    <Ionicons name="sparkles" size={size} color="#FFFFFF" />
-  </View>
-);
 
 const ChefAINavigator: React.FC = () => (
   <ChefAIStack.Navigator screenOptions={{ headerShown: false }}>
@@ -76,52 +81,46 @@ const ChefAINavigator: React.FC = () => (
 );
 
 const MainTabs: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 64 + insets.bottom;
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: "#BB0009",
-        tabBarInactiveTintColor: "#949FA2",
+        tabBarStyle: [
+          styles.tabBar,
+          { height: tabBarHeight, paddingBottom: insets.bottom },
+        ],
+        tabBarActiveTintColor: "#B9071E",
+        tabBarInactiveTintColor: "#94A3B8",
         tabBarLabelStyle: styles.tabLabel,
-        tabBarIcon: ({ focused, color, size }) => {
-          if (route.name === "ChefAI") {
-            return <ChefAITabIcon focused={focused} size={size - 4} />;
-          }
-          const icons = TAB_ICONS[route.name];
-          const iconName = focused ? icons.active : icons.inactive;
-          return <Ionicons name={iconName} size={size - 2} color={color} />;
+        tabBarIcon: ({ focused, color }) => {
+          const icons: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
+            Beranda: { active: "grid", inactive: "grid-outline" },
+            Stok:    { active: "file-tray-full", inactive: "file-tray-full-outline" },
+            Riwayat: { active: "time", inactive: "time-outline" },
+            Profil:  { active: "person", inactive: "person-outline" },
+          };
+          const icon = icons[route.name];
+          if (!icon) return null;
+          return <Ionicons name={focused ? icon.active : icon.inactive} size={22} color={color} />;
         },
       })}
     >
-      <Tab.Screen
-        name="Beranda"
-        component={HomeScreen}
-        options={{ tabBarLabel: "BERANDA" }}
-      />
-      <Tab.Screen
-        name="Stok"
-        component={StokScreen}
-        options={{ tabBarLabel: "STOK" }}
-      />
+      <Tab.Screen name="Beranda" component={HomeScreen} options={{ tabBarLabel: "BERANDA" }} />
+      <Tab.Screen name="Stok"    component={StokScreen}  options={{ tabBarLabel: "STOK" }} />
       <Tab.Screen
         name="ChefAI"
         component={ChefAINavigator}
         options={{
-          tabBarLabel: "CHEF AI",
-          tabBarActiveTintColor: "#BB0009",
+          tabBarLabel: () => null,
+          tabBarIcon:  () => null,
+          tabBarButton: (props) => <ChefAIFloatingButton {...props} />,
         }}
       />
-      <Tab.Screen
-        name="Riwayat"
-        component={RiwayatScreen}
-        options={{ tabBarLabel: "RIWAYAT" }}
-      />
-      <Tab.Screen
-        name="Profil"
-        component={ProfilScreen}
-        options={{ tabBarLabel: "PROFIL" }}
-      />
+      <Tab.Screen name="Riwayat" component={RiwayatScreen} options={{ tabBarLabel: "RIWAYAT" }} />
+      <Tab.Screen name="Profil"  component={ProfilScreen}  options={{ tabBarLabel: "PROFIL" }} />
     </Tab.Navigator>
   );
 };
@@ -141,16 +140,14 @@ const AppNavigator: React.FC = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {session ? (
         <>
-          <Stack.Screen name="Main" component={MainTabs} />
-          <Stack.Screen name="Notification" component={NotificationScreen} />
-          <Stack.Screen name="HistoryDetail" component={HistoryDetailScreen} />
+          <Stack.Screen name="Main"           component={MainTabs} />
+          <Stack.Screen name="Notification"   component={NotificationScreen} />
+          <Stack.Screen name="HistoryDetail"  component={HistoryDetailScreen} />
           <Stack.Screen name="FavoriteRecipes" component={FavoriteRecipesScreen} />
-
-
         </>
       ) : (
         <>
-          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Login"  component={LoginScreen} />
           <Stack.Screen name="SignUp" component={SignUpScreen} />
         </>
       )}
@@ -165,33 +162,63 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#FAFAFA",
   },
+
   tabBar: {
-    backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
-    height: Platform.OS === "ios" ? 88 : 70,
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    borderTopWidth: 0,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    // overflow visible lets the floating circle poke above the bar
+    overflow: "visible",
     paddingTop: 8,
-    paddingBottom: Platform.OS === "ios" ? 28 : 10,
+    shadowColor: "#2C2F30",
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 12,
   },
+
   tabLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    letterSpacing: 0.3,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.55,
     marginTop: 2,
   },
-  chefAIButton: {
+
+  // Wrapper diperluas ke atas agar circle yang float masih bisa di-tap
+  chefAIWrapper: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingBottom: 8,
+    marginTop: -16,
+    paddingTop: 16,
+  },
+
+  chefAICircle: {
+    position: "absolute",
+    top: 0,
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: "#BB0009",
+    borderRadius: 9999,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
-    shadowColor: "#BB0009",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+
+  chefAILabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.55,
+    color: "#94A3B8",
+  },
+
+  chefAILabelActive: {
+    color: "#B9071E",
   },
 });
 
