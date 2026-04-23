@@ -15,6 +15,7 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
+import { useAuth } from "../context/AuthContext";
 import { api, extractApiError } from "../services/api";
 import { RecommendationItem, RecommendationResponse } from "../types/api";
 import { capitalizeEachWord } from "../utils/formatters";
@@ -38,6 +39,7 @@ const normalizeTitle = (value: string) =>
 
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { photoUri } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("User");
@@ -216,9 +218,14 @@ const HomeScreen: React.FC = () => {
             >
               <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
             </TouchableOpacity>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={20} color="#FFFFFF" />
-            </View>
+            <TouchableOpacity
+              style={styles.avatar}
+              onPress={() => navigation.navigate("Main", { screen: "Profil" } as any)}
+            >
+              {photoUri
+                ? <Image source={{ uri: photoUri }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                : <Ionicons name="person" size={20} color="#FFFFFF" />}
+            </TouchableOpacity>
           </View>
         </View>
 

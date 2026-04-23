@@ -24,6 +24,7 @@ import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
 import { unregisterPushToken } from "../services/notifications";
+import * as ImagePicker from "expo-image-picker";
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -204,7 +205,46 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
 // ── Ganti Foto Modal ───────────────────────────────────────────
 const FOTO_SHEET_HEIGHT = 320;
 
-const GantiFotoModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
+const GantiFotoModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  onPhotoSelected: (uri: string) => void;
+}> = ({ visible, onClose, onPhotoSelected }) => {
+  const handleCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Izin Diperlukan", "Izinkan akses kamera untuk mengambil foto.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: "images",
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      onPhotoSelected(result.assets[0].uri);
+      onClose();
+    }
+  };
+
+  const handleGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Izin Diperlukan", "Izinkan akses galeri untuk memilih foto.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      onPhotoSelected(result.assets[0].uri);
+      onClose();
+    }
+  };
   const slideAnim = React.useRef(new Animated.Value(FOTO_SHEET_HEIGHT)).current;
   const backdropAnim = React.useRef(new Animated.Value(0)).current;
 
@@ -237,7 +277,7 @@ const GantiFotoModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ v
         <Text style={fotoStyles.subtitle}>Pilih cara untuk memperbarui foto Anda</Text>
 
         <View style={fotoStyles.optionCard}>
-          <TouchableOpacity style={fotoStyles.optionRow} activeOpacity={0.7}>
+          <TouchableOpacity style={fotoStyles.optionRow} activeOpacity={0.7} onPress={handleCamera}>
             <View style={[fotoStyles.optionIcon, { backgroundColor: "#BB0009" }]}>
               <Ionicons name="camera-outline" size={22} color="#FFFFFF" />
             </View>
@@ -250,7 +290,7 @@ const GantiFotoModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ v
 
           <View style={fotoStyles.optionDivider} />
 
-          <TouchableOpacity style={fotoStyles.optionRow} activeOpacity={0.7}>
+          <TouchableOpacity style={fotoStyles.optionRow} activeOpacity={0.7} onPress={handleGallery}>
             <View style={[fotoStyles.optionIcon, { backgroundColor: "#F59E0B" }]}>
               <Ionicons name="images-outline" size={22} color="#FFFFFF" />
             </View>
@@ -458,13 +498,26 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, name, emai
 // ── Main Screen ────────────────────────────────────────────────
 const ProfilScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { session, signOut } = useAuth();
+  const { session, signOut, photoUri: contextPhotoUri, setPhotoUri } = useAuth();
+  const [localPhotoUri, setLocalPhotoUri] = useState<string | null>(contextPhotoUri);
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const [editProfileVisible, setEditProfileVisible] = useState(false);
   const [gantiFotoVisible, setGantiFotoVisible] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [saving, setSaving] = useState(false);
+  const [bahanCount, setBahanCount] = useState<number>(0);
+  const [resepCount, setResepCount] = useState<number>(0);
+
+  // Keep local copy in sync when context changes (e.g. first load)
+  useEffect(() => {
+    setLocalPhotoUri(contextPhotoUri);
+  }, [contextPhotoUri]);
+
+  const handlePhotoSelected = (uri: string) => {
+    setLocalPhotoUri(uri);   // updates this screen immediately
+    setPhotoUri(uri);        // broadcasts to other screens via context
+  };
 
   useEffect(() => {
     if (!session) return;
@@ -482,6 +535,18 @@ const ProfilScreen: React.FC = () => {
           setProfileName(metaName);
         }
       });
+
+    supabase
+      .from("inventory_with_spi")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", session.user.id)
+      .then(({ count }) => setBahanCount(count ?? 0));
+
+    supabase
+      .from("user_favorites")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", session.user.id)
+      .then(({ count }) => setResepCount(count ?? 0));
   }, [session]);
 
   const handleSaveName = async () => {
@@ -550,9 +615,11 @@ const ProfilScreen: React.FC = () => {
             >
               <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
             </TouchableOpacity>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={20} color="#FFFFFF" />
-            </View>
+            <TouchableOpacity activeOpacity={1} style={styles.avatar}>
+              {localPhotoUri
+                ? <Image source={{ uri: localPhotoUri }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                : <Ionicons name="person" size={20} color="#FFFFFF" />}
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -567,7 +634,14 @@ const ProfilScreen: React.FC = () => {
                 style={styles.avatarGradientRing}
               >
                 <View style={styles.avatarInner}>
-                  <Ionicons name="person" size={52} color="#FFFFFF" />
+                  {localPhotoUri ? (
+                    <Image
+                      source={{ uri: localPhotoUri }}
+                      style={{ width: 100, height: 100, borderRadius: 50 }}
+                    />
+                  ) : (
+                    <Ionicons name="person" size={52} color="#FFFFFF" />
+                  )}
                 </View>
               </LinearGradient>
             </TouchableOpacity>
@@ -580,12 +654,12 @@ const ProfilScreen: React.FC = () => {
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Ionicons name="leaf-outline" size={16} color="#15803D" />
-              <Text style={styles.statText}>1.2kg Diselamatkan</Text>
+              <Text style={styles.statText}>{bahanCount} Bahan Diselamatkan</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Ionicons name="restaurant-outline" size={16} color="#BB0009" />
-              <Text style={styles.statText}>24 Resep</Text>
+              <Text style={styles.statText}>{resepCount} Resep Favorit</Text>
             </View>
           </View>
         </View>
@@ -650,6 +724,7 @@ const ProfilScreen: React.FC = () => {
       <GantiFotoModal
         visible={gantiFotoVisible}
         onClose={() => setGantiFotoVisible(false)}
+        onPhotoSelected={handlePhotoSelected}
       />
       <ChangePasswordModal
         visible={changePasswordVisible}
@@ -702,6 +777,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#36393B",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   avatarSection: {
     alignItems: "center",

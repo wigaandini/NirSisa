@@ -122,12 +122,8 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Header Row: Logo + Globe */}
           <View style={styles.headerRow}>
             <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-            <TouchableOpacity style={styles.globeButton}>
-              <Ionicons name="globe-outline" size={24} color="#656C6E" />
-            </TouchableOpacity>
           </View>
 
           {/* Title */}
@@ -261,14 +257,6 @@ const styles = StyleSheet.create({
   logoSmall: {
     width: 72,
     height: 40,
-  },
-  globeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#F0F0F0",
-    alignItems: "center",
-    justifyContent: "center",
   },
   titleContainer: {
     marginBottom: 12,

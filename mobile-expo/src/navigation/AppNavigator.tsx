@@ -12,6 +12,7 @@ import { NavigatorScreenParams } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import LoginScreen from "../screens/LoginScreen";
 import SignUpScreen from "../screens/SignUpScreen";
+import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import HomeScreen from "../screens/HomeScreen";
 import StokScreen from "../screens/StokScreen";
 import ProfilScreen from "../screens/ProfilScreen";
@@ -39,6 +40,7 @@ export type MainTabParamList = {
 export type RootStackParamList = {
   Login: undefined;
   SignUp: undefined;
+  ForgotPassword: undefined;
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   Notification: undefined;
   HistoryDetail: { historyId: string };
@@ -147,8 +149,9 @@ const AppNavigator: React.FC = () => {
         </>
       ) : (
         <>
-          <Stack.Screen name="Login"  component={LoginScreen} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} />
+          <Stack.Screen name="Login"          component={LoginScreen} />
+          <Stack.Screen name="SignUp"         component={SignUpScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         </>
       )}
     </Stack.Navigator>

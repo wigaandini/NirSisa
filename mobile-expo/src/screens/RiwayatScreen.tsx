@@ -29,7 +29,7 @@ interface HistoryItem {
 
 const RiwayatScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { session } = useAuth();
+  const { session, photoUri } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -113,9 +113,14 @@ const RiwayatScreen: React.FC = () => {
             <TouchableOpacity style={styles.notifButton} onPress={() => navigation.navigate("Notification")}>
               <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
             </TouchableOpacity>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={20} color="#FFFFFF" />
-            </View>
+            <TouchableOpacity
+              style={styles.avatar}
+              onPress={() => navigation.navigate("Main", { screen: "Profil" } as any)}
+            >
+              {photoUri
+                ? <Image source={{ uri: photoUri }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                : <Ionicons name="person" size={20} color="#FFFFFF" />}
+            </TouchableOpacity>
           </View>
         </View>
 

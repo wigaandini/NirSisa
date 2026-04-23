@@ -1,5 +1,11 @@
 import React, { useState, useCallback } from "react";
-import { View, StyleSheet, ActivityIndicator } from "react-native";
+import { View, StyleSheet, ActivityIndicator, Text, TextInput } from "react-native";
+
+// Prevent Android system font-size settings from scaling all text/inputs
+(Text as any).defaultProps = (Text as any).defaultProps ?? {};
+(Text as any).defaultProps.allowFontScaling = false;
+(TextInput as any).defaultProps = (TextInput as any).defaultProps ?? {};
+(TextInput as any).defaultProps.allowFontScaling = false;
 import { NavigationContainer } from "@react-navigation/native";
 import {
   useFonts,

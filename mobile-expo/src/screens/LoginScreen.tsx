@@ -83,12 +83,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Header Row: Logo + Globe */}
           <View style={styles.headerRow}>
             <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-            <TouchableOpacity style={styles.globeButton}>
-              <Ionicons name="globe-outline" size={24} color="#656C6E" />
-            </TouchableOpacity>
           </View>
 
           {/* Title */}
@@ -147,7 +143,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           </View>
 
           {/* Forgot Password */}
-          <TouchableOpacity style={styles.forgotContainer}>
+          <TouchableOpacity
+            style={styles.forgotContainer}
+            onPress={() => navigation.navigate("ForgotPassword")}
+          >
             <Text style={styles.forgotText}>Lupa Kata Sandi?</Text>
           </TouchableOpacity>
 
@@ -211,14 +210,6 @@ const styles = StyleSheet.create({
   logoSmall: {
     width: 72,
     height: 40,
-  },
-  globeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#F0F0F0",
-    alignItems: "center",
-    justifyContent: "center",
   },
   titleContainer: {
     marginBottom: 12,
