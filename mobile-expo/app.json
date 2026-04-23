@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "mobile-expo",
+    "name": "NirSisa",
     "slug": "mobile-expo",
     "version": "1.0.0",
     "scheme": "nirsisa",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -17,6 +17,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.yovankaasm.mobileexpo",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -31,7 +33,19 @@
     "plugins": [
       "expo-font",
       "expo-secure-store",
-      "expo-web-browser"
-    ]
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#BB0009"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "44cbef6c-683c-47e6-a89a-53adca3f9cb5"
+      }
+    }
   }
 }
