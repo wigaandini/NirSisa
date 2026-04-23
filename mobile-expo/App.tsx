@@ -1,4 +1,3 @@
-import 'react-native-url-polyfill/auto';
 import React, { useState, useCallback } from "react";
 import { View, StyleSheet, ActivityIndicator } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";

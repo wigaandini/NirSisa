@@ -23,8 +23,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "softwareKeyboardLayoutMode": "resize",
-      "package": "com.clementnathanaell.mobileexpo"
+      "softwareKeyboardLayoutMode": "adjustResize"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -33,11 +32,6 @@
       "expo-font",
       "expo-secure-store",
       "expo-web-browser"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "40f3896d-0fa8-4cdb-8b3f-f23c763b2211"
-      }
-    }
+    ]
   }
 }

@@ -5,18 +5,8 @@
 // Source of truth: backend/app/schemas/recipe.py & inventory.py
 // ============================================================================
 
-import axios from "axios";
-
 // ─── Recommendation (dari /recommend) ─────────────────────────────────────────
-export const api = axios.create({
-  // Dia akan otomatis mengambil URL Railway saat dideploy
-  baseURL: process.env.EXPO_PUBLIC_API_URL, 
-});
 
-export const extractApiError = (err: any) => {
-  return err.response?.data?.detail || err.message || "Unknown Error";
-};
-  
 export interface RecommendationItem {
   index: number;                  // row index di pickle, BUKAN DB primary key
   title: string;
