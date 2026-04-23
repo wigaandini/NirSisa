@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "948955949758",
+    "project_id": "nirsisa-5200",
+    "storage_bucket": "nirsisa-5200.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:948955949758:android:95d079449e56c499394cef",
+        "android_client_info": {
+          "package_name": "com.yovankaasm.mobileexpo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmvuJGiueCNsrugpTEAomM6WwF106Y5QI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
