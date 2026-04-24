@@ -15,7 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import TambahBahanModal, { BahanBaru } from "../components/TambahBahanModal";
 import StokFilterModal, { DEFAULT_STOK_FILTER, StokFilter } from "../components/StokFilterModal";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
@@ -107,14 +107,60 @@ const StokScreen: React.FC = () => {
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchInventory();
+    }, [activeFilter, session])
+  );
+
   useEffect(() => {
-    fetchInventory();
-  }, [activeFilter, session]);
+    if (!session?.user?.id) return;
+
+    // Buat channel untuk mendengarkan perubahan pada tabel 'inventory_stock'
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen ke INSERT, UPDATE, dan DELETE
+          schema: 'public',
+          table: 'inventory_stock',
+          filter: `user_id=eq.${session.user.id}`, // Hanya data milik user ini
+        },
+        (payload) => {
+          console.log('Perubahan database terdeteksi!', payload);
+          fetchInventory(); // Segarkan data saat ada perubahan
+        }
+      )
+      .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel); // Cleanup saat screen tidak digunakan
+      };
+    }, [session]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchInventory();
+    }, [activeFilter, session])
+  );
+  
+  useEffect(() => {
+    // Jalankan polling hanya jika ada session
+    if (!session) return;
+
+    const interval = setInterval(() => {
+      console.log("Polling: Mengambil data terbaru...");
+      fetchInventory();
+    }, 30000); // 30000ms = 30 detik. Bisa Anda ganti sesuai keinginan.
+
+    return () => clearInterval(interval); // Hapus interval saat pindah halaman
+  }, [session, activeFilter]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchInventory();
-  }, [session]);
+  }, [session, activeFilter]);
 
   const handleSaveBahan = async (bahan: BahanBaru) => {
     if (!session?.access_token) return;
