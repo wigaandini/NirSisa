@@ -106,31 +106,51 @@ async def update_item(
     item: InventoryItemUpdate,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Update detail bahan milik user."""
     sb = get_supabase()
-    updates = item.model_dump(exclude_none=True)
+    
+    # 1. Ubah model ke dictionary, exclude_none=True agar field yang tidak diisi tidak ikut terupdate
+    updates = item.model_dump(exclude_none=True, mode='json')
 
+    # 2. Proses normalisasi nama jika ada perubahan nama
     if "item_name" in updates:
         updates["item_name_normalized"] = normalize_ingredient_name(updates["item_name"])
 
-    if "expiry_date" in updates and updates["expiry_date"]:
-        updates["expiry_date"] = updates["expiry_date"].isoformat()
+    # 3. FIX: Tangani category_name agar tidak menyebabkan error PGRST204
+    if "category_name" in updates:
+        cat_name = updates.pop("category_name") # Hapus category_name dari dictionary updates
+        
+        # Cari category_id berdasarkan namanya di tabel categories
+        cat_res = sb.table("ingredient_categories").select("id").ilike("name", cat_name).execute()
+        
+        if cat_res.data:
+            updates["category_id"] = cat_res.data[0]["id"]
+        else:
+            # Jika tidak ketemu, kita bisa set null atau biarkan kolom category_id yang lama
+            # updates["category_id"] = None 
+            pass
 
     if not updates:
-        raise HTTPException(status_code=400, detail="Tidak ada field yang diperbarui.")
+        raise HTTPException(status_code=400, detail="Tidak ada field yang diubah.")
 
-    result = (
-        sb.table("inventory_stock")
-        .update(updates)
-        .eq("id", item_id)
-        .eq("user_id", user_id)
-        .execute()
-    )
+    # 4. Eksekusi ke Supabase
+    try:
+        result = (
+            sb.table("inventory_stock")
+            .update(updates)
+            .eq("id", item_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
 
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Item tidak ditemukan atau bukan milik Anda.")
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Item tidak ditemukan atau akses ditolak.")
 
-    return enrich_inventory_item(result.data[0])
+        # Gunakan fungsi helper Anda untuk mengembalikan data lengkap
+        return enrich_inventory_item(result.data[0])
+        
+    except Exception as e:
+        print(f"Error Database: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gagal update ke database: {str(e)}")
 
 
 # DELETE /inventory/{item_id}  — Hapus bahan

@@ -47,6 +47,8 @@ const StokScreen: React.FC = () => {
   const [tambahVisible, setTambahVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [activeFilter, setActiveFilter] = useState<StokFilter>(DEFAULT_STOK_FILTER);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null); // State untuk menyimpan item yang diedit
+
 
   const fetchInventory = async () => {
     if (!session?.user?.id) return;
@@ -214,6 +216,62 @@ const StokScreen: React.FC = () => {
     return { label: "SEGAR", color: "#15803D" };
   };
 
+    // FUNGSI BARU: Handle saat tombol edit ditekan
+  const handleEditPress = (item: InventoryItem) => {
+    setEditItem(item);
+    setTambahVisible(true);
+  };
+
+  // FUNGSI BARU: Handle simpan perubahan (Update)
+  const handleUpdateBahan = async (bahan: BahanBaru) => {
+    if (!session?.access_token || !editItem) return;
+    try {
+      setLoading(true);
+      
+      // Pastikan URL bersih tanpa double slash
+      const url = `${API_URL.replace(/\/$/, "")}/inventory/${editItem.id}`;
+
+      const response = await axios.patch( // Gunakan PATCH sesuai kode backend Anda
+        url,
+        {
+          item_name: bahan.nama,
+          quantity: parseFloat(bahan.jumlah),
+          unit: bahan.satuan,
+          is_natural: bahan.isNatural,
+          expiry_date: bahan.tanggalExpired, // Ini sudah jadi YYYY-MM-DD dari handleSave modal
+          category_name: bahan.kategori,
+        },
+        { headers: { Authorization: `Bearer ${session.access_token}` } }
+      );
+
+      if (response.status === 200 || response.status === 204) {
+        Alert.alert("Berhasil", "Data telah diperbarui.");
+        onModalClose(); // Reset editItem dan tutup modal
+        fetchInventory();
+      }
+    } catch (error: any) {
+      console.error("Update Error:", error.response?.data || error.message);
+      const msg = error.response?.data?.detail || "Terjadi kesalahan pada server.";
+      Alert.alert("Gagal", typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update fungsi handleSaveBahan agar bisa menangani Tambah DAN Edit
+  const onModalSave = (bahan: BahanBaru) => {
+    if (editItem) {
+      handleUpdateBahan(bahan);
+    } else {
+      handleSaveBahan(bahan);
+    }
+  };
+
+  const onModalClose = () => {
+    setTambahVisible(false);
+    setEditItem(null); // Pastikan reset saat close
+  };
+
   return (
     <View style={styles.flex}>
       <ScrollView
@@ -305,6 +363,12 @@ const StokScreen: React.FC = () => {
                         <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
                           <Text style={styles.statusBadgeText}>{statusInfo.label}</Text>
                         </View>
+                        <TouchableOpacity 
+                          onPress={() => handleEditPress(item)} 
+                          style={styles.editActionBtn}
+                        >
+                          <Ionicons name="pencil-outline" size={20} color="#656C6E" />
+                        </TouchableOpacity>
 
                         <TouchableOpacity onPress={() => handleDeleteBahan(item)} style={styles.deleteButton}>
                           <Ionicons name="trash-outline" size={20} color="#BB0009" />
@@ -327,7 +391,19 @@ const StokScreen: React.FC = () => {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      <TambahBahanModal visible={tambahVisible} onSave={handleSaveBahan} onClose={() => setTambahVisible(false)} />
+      <TambahBahanModal 
+        visible={tambahVisible} 
+        onSave={onModalSave} 
+        onClose={onModalClose}
+        initialData={editItem ? {
+          nama: editItem.item_name,
+          jumlah: editItem.quantity.toString(),
+          satuan: editItem.unit,
+          kategori: editItem.category_name || "Lainnya",
+          isNatural: editItem.category_name !== "Produk Jadi", 
+          tanggalExpired: (editItem as any).expiry_date // Kirim expiry_date asli dari DB
+        } : undefined}
+      />   
       <StokFilterModal
         visible={filterVisible}
         initialFilter={activeFilter}
@@ -540,11 +616,21 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 8,
   },
+  editActionBtn: {
+    padding: 8,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    marginLeft: 4,
+  },
+
   deleteButton: {
-    padding: 4,
+    padding: 8,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
   },
+
   emptyState: {
     alignItems: "center",
     marginTop: 40,

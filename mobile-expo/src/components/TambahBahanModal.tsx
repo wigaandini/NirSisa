@@ -13,7 +13,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Switch,
-  Keyboard, // Tambahkan Switch untuk opsi manual
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/api";
@@ -22,55 +21,57 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
 
 const KATEGORI_OPTIONS = [
-  "Sayuran",
-  "Buah-Buahan",
-  "Daging Sapi",
-  "Daging Ayam",
-  "Ikan",
-  "Udang",
-  "Telur",
-  "Tahu",
-  "Tempe",
-  "Susu & Olahan",
-  "Produk Jadi",
-  "Bumbu Segar",
-  "Tepung",
-  "Lainnya"
+  "Sayuran", "Buah-Buahan", "Daging Sapi", "Daging Ayam", "Ikan",
+  "Udang", "Telur", "Tahu", "Tempe", "Susu & Olahan", "Produk Jadi",
+  "Bumbu Segar", "Tepung", "Lainnya"
 ];
 
-// 1. UPDATE INTERFACE agar sesuai dengan kebutuhan StokScreen & Backend
 export interface BahanBaru {
   nama: string;
   kategori: string;
   jumlah: string;
-  satuan: string;        // Tambahan
-  isNatural: boolean;    // Tambahan
-  tanggalExpired: string | null; // Tambahan
+  satuan: string;
+  isNatural: boolean;
+  tanggalExpired: string | null;
 }
 
 interface TambahBahanModalProps {
   visible: boolean;
   onSave: (bahan: BahanBaru) => void;
   onClose: () => void;
+  initialData?: BahanBaru; 
 }
 
-const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, onClose }) => {
+// Helper: Ubah YYYY-MM-DD (DB) ke DD/MM/YYYY (UI)
+const formatDBDateToUI = (dateStr: string | null | undefined) => {
+  if (!dateStr) return "";
+  // Menangani format ISO (2026-04-20T...) atau Date string (2026-04-20)
+  const pureDate = dateStr.split('T')[0]; 
+  const [year, month, day] = pureDate.split("-");
+  return `${day}/${month}/${year}`;
+};
+
+const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ 
+  visible, 
+  onSave, 
+  onClose, 
+  initialData // 1. SUDAH DITAMBAHKAN DI SINI
+}) => {
   const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
 
-  // States
   const [nama, setNama] = useState("");
   const [kategori, setKategori] = useState("");
   const [jumlah, setJumlah] = useState("");
   const [satuan, setSatuan] = useState("");
-  const [satuanManual, setSatuanManual] = useState(false);
-  const [tanggal, setTanggal] = useState("");
+  const [tanggal, setTanggal] = useState(""); // Ini state tanggal Anda
   const [isNatural, setIsNatural] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [suggestions, setSuggestions] = useState<{ingredient_name: string; default_unit: string; category_display?: string}[]>([]);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Animasi Modal
   useEffect(() => {
     if (visible) {
       Animated.parallel([
@@ -86,16 +87,38 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
     }
   }, [visible]);
 
+  // Handle Initial Data (Mode Edit vs Tambah)
+  useEffect(() => {
+    if (visible) {
+      if (initialData) {
+        // --- MODE EDIT: Tampilkan data existing ---
+        setNama(initialData.nama || "");
+        setKategori(initialData.kategori || "");
+        setJumlah(initialData.jumlah?.toString() || "");
+        setSatuan(initialData.satuan || "");
+        setIsNatural(initialData.isNatural);
+        setTanggal(formatDBDateToUI(initialData.tanggalExpired)); // Konversi ke DD/MM/YYYY
+      } else {
+        // --- MODE TAMBAH: Reset jadi kosong ---
+        setNama("");
+        setKategori("");
+        setJumlah("");
+        setSatuan("pcs");
+        setIsNatural(true);
+        setTanggal("");
+      }
+    }
+  }, [visible, initialData]);
+
   // Otomatis set isNatural berdasarkan kategori
   useEffect(() => {
     if (kategori === "Produk Jadi") {
       setIsNatural(false);
-    } else if (kategori !== "") {
+    } else if (kategori !== "" && kategori !== "Lainnya") {
       setIsNatural(true);
     }
   }, [kategori]);
 
-  // Debounced ingredient search for autocomplete
   const handleNamaChange = (text: string) => {
     setNama(text);
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -116,52 +139,31 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
     }, 300);
   };
 
-  // User picks a suggestion → auto-fill nama + satuan + kategori
-  const handlePickSuggestion = (item: { ingredient_name: string; default_unit: string; category_display?: string }) => {
+  const handlePickSuggestion = (item: any) => {
     setNama(item.ingredient_name);
     setSatuan(item.default_unit);
-    setSatuanManual(false);
     setShowSuggestions(false);
-    setSuggestions([]);
     if (item.category_display && KATEGORI_OPTIONS.includes(item.category_display)) {
       setKategori(item.category_display);
     }
   };
 
-  const handleClose = () => {
-    setNama("");
-    setKategori("");
-    setJumlah("");
-    setSatuan("");
-    setSatuanManual(false);
-    setTanggal("");
-    setDropdownOpen(false);
-    setSuggestions([]);
-    setShowSuggestions(false);
-    onClose();
-  };
-
-  // Helper untuk mengubah format MM/DD/YYYY ke YYYY-MM-DD (Standar Database)
   const formatToDBDate = (dateStr: string) => {
     if (!dateStr || dateStr.length < 10) return null;
-    
-    // Sebelumnya: [mm, dd, yyyy]
-    // Ubah menjadi standar Indonesia: [dd, mm, yyyy]
     const [dd, mm, yyyy] = dateStr.split("/");
-    
-    return `${yyyy}-${mm}-${dd}`; // Ini akan menghasilkan 2026-04-13 yang benar
+    return `${yyyy}-${mm}-${dd}`;
   };
 
   const handleSave = () => {
     onSave({
-      nama: nama,
-      kategori: kategori,
-      jumlah: jumlah,
-      satuan: satuan || "pcs", // Default ke pcs jika kosong
-      isNatural: isNatural,
+      nama,
+      kategori,
+      jumlah,
+      satuan: satuan || "pcs",
+      isNatural,
       tanggalExpired: formatToDBDate(tanggal),
     });
-    handleClose();
+    // Jangan panggil handleClose di sini jika parent (StokScreen) yang akan menutup modal setelah API sukses
   };
 
   const handleTanggalChange = (val: string) => {
@@ -173,36 +175,29 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
   };
 
   return (
-    <Modal transparent visible={visible} animationType="none" onRequestClose={handleClose}>
-      {/* Backdrop — tap luar untuk tutup */}
-      <TouchableWithoutFeedback onPress={handleClose}>
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[styles.backdrop, { opacity: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }) }]} />
       </TouchableWithoutFeedback>
 
-      {/* Sheet selalu anchor di bawah — TIDAK ikut naik saat keyboard muncul */}
-      <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]} pointerEvents="auto">
+      <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}>
         <View style={styles.dragHandle} />
-
         <View style={styles.sheetHeader}>
           <View>
-            <Text style={styles.sheetTitle}>Tambah Bahan</Text>
+            <Text style={styles.sheetTitle}>{initialData ? "Edit Bahan" : "Tambah Bahan"}</Text>
             <Text style={styles.sheetSubtitle}>Lacak inventaris makanan Anda</Text>
           </View>
-          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
             <Ionicons name="close" size={18} color="#2B2B2B" />
           </TouchableOpacity>
         </View>
 
-        {/* KAV hanya mengecilkan area scroll — sheet tidak bergerak */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={{ flex: 1 }}
-          keyboardVerticalOffset={16}
-        >
-          <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }} >
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }} >
             
             <Text style={styles.fieldLabel}>NAMA BAHAN</Text>
-            <TextInput style={styles.textInput} placeholder="Contoh: Wortel" value={nama} onChangeText={handleNamaChange} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} importantForAutofill="no" selectTextOnFocus={true} />
+            <TextInput style={styles.textInput} placeholder="Contoh: Wortel" value={nama} onChangeText={handleNamaChange} />
+            
             {showSuggestions && (
               <View style={styles.suggestionList}>
                 {suggestions.map((s, i) => (
@@ -223,9 +218,8 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
             {dropdownOpen && (
               <View style={styles.dropdownList}>
                 {KATEGORI_OPTIONS.map((opt) => (
-                  <TouchableOpacity key={opt} style={[styles.dropdownItem, kategori === opt && styles.dropdownItemSelected]} onPress={() => { setKategori(opt); setDropdownOpen(false); }}>
-                    <Text style={[styles.dropdownItemText, kategori === opt && styles.dropdownItemTextSelected]}>{opt}</Text>
-                    {kategori === opt && <Ionicons name="checkmark" size={16} color="#BB0009" />}
+                  <TouchableOpacity key={opt} style={styles.dropdownItem} onPress={() => { setKategori(opt); setDropdownOpen(false); }}>
+                    <Text style={styles.dropdownItemText}>{opt}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -238,7 +232,7 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.fieldLabel}>SATUAN</Text>
-                <TextInput style={styles.textInput} placeholder="gram / ikat" value={satuan} onChangeText={(v) => { setSatuan(v); setSatuanManual(true); }} />
+                <TextInput style={styles.textInput} placeholder="gram / ikat" value={satuan} onChangeText={setSatuan} />
               </View>
             </View>
 
@@ -255,10 +249,9 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({ visible, onSave, on
               <TextInput style={styles.dateInput} placeholder="dd/mm/yyyy" value={tanggal} onChangeText={handleTanggalChange} keyboardType="numeric" maxLength={10} />
               <Ionicons name="calendar-outline" size={20} color="#656C6E" />
             </View>
-            <Text style={styles.infoText}>*Kosongkan jika ingin AI mengestimasi otomatis</Text>
 
             <TouchableOpacity style={[styles.saveButton, !nama && styles.saveButtonDisabled]} onPress={handleSave} disabled={!nama}>
-              <Text style={styles.saveButtonText}>Simpan ke Inventaris</Text>
+              <Text style={styles.saveButtonText}>{initialData ? "Simpan Perubahan" : "Simpan ke Inventaris"}</Text>
             </TouchableOpacity>
 
           </ScrollView>
