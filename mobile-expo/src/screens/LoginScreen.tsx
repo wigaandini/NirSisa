@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
@@ -30,6 +31,26 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const applySessionFromUrl = async (url: string) => {
+    const hash = url.split("#")[1] ?? "";
+    const params = new URLSearchParams(hash);
+    const access_token = params.get("access_token");
+    const refresh_token = params.get("refresh_token");
+    if (access_token && refresh_token) {
+      await supabase.auth.setSession({ access_token, refresh_token });
+    }
+  };
+
+  // Android: Chrome Custom Tab closes via intent, so openAuthSessionAsync returns
+  // "dismiss" instead of "success". Catch the deep link here instead.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      applySessionFromUrl(url);
+    });
+    return () => sub.remove();
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -58,16 +79,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       return;
     }
 
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+    // Pass expUrl (app scheme) so iOS ASWebAuthenticationSession knows when
+    // to close; Android handles the redirect via Linking listener above.
+    const result = await WebBrowser.openAuthSessionAsync(data.url, expUrl);
 
     if (result.type === "success" && result.url) {
-      const hash = result.url.split("#")[1] ?? "";
-      const params = new URLSearchParams(hash);
-      const access_token = params.get("access_token");
-      const refresh_token = params.get("refresh_token");
-      if (access_token && refresh_token) {
-        await supabase.auth.setSession({ access_token, refresh_token });
-      }
+      await applySessionFromUrl(result.url);
     }
   };
 
