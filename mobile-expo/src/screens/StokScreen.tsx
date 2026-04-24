@@ -31,7 +31,7 @@ interface InventoryItem {
   quantity: number;
   unit: string;
   category_name: string | null;
-  freshness_status: "expired" | "warning" | "fresh" | "unknown";
+  freshness_status: "expired" | "critical" | "warning" | "fresh" | "unknown";
   days_remaining: number;
 }
 
@@ -75,14 +75,7 @@ const StokScreen: React.FC = () => {
       }
 
       if (activeFilter.status.length > 0) {
-        const statusMap: Record<string, string> = {
-          "Segera Kadaluwarsa": "expired",
-          "Mendekati Kedaluwarsa": "warning",
-          Segar: "fresh",
-        };
-
-        const mappedStatus = activeFilter.status.map((s) => statusMap[s]);
-        query = query.in("freshness_status", mappedStatus);
+        query = query.in("freshness_status", activeFilter.status);
       }
 
       if (activeFilter.sortBy === "expiry") {
@@ -109,40 +102,36 @@ const StokScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       fetchInventory();
-    }, [activeFilter, session])
+    }, [session])
   );
+
+  useEffect(() => {
+    fetchInventory();
+  }, [activeFilter]);
 
   useEffect(() => {
     if (!session?.user?.id) return;
 
-    // Buat channel untuk mendengarkan perubahan pada tabel 'inventory_stock'
     const channel = supabase
       .channel('schema-db-changes')
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen ke INSERT, UPDATE, dan DELETE
+          event: '*',
           schema: 'public',
           table: 'inventory_stock',
-          filter: `user_id=eq.${session.user.id}`, // Hanya data milik user ini
+          filter: `user_id=eq.${session.user.id}`,
         },
-        (payload) => {
-          console.log('Perubahan database terdeteksi!', payload);
-          fetchInventory(); // Segarkan data saat ada perubahan
+        () => {
+          fetchInventory();
         }
       )
       .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel); // Cleanup saat screen tidak digunakan
-      };
-    }, [session]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchInventory();
-    }, [activeFilter, session])
-  );
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session]);
   
   useEffect(() => {
     // Jalankan polling hanya jika ada session
@@ -351,19 +340,33 @@ const StokScreen: React.FC = () => {
         </TouchableOpacity>
 
         <View style={styles.summaryRow}>
-          <View style={[styles.summaryCard, styles.summaryExpiring]}>
-            <Text style={styles.summaryLabel}>SEGERA{"\n"}KADALUWARSA</Text>
-            <Text style={styles.summaryNumber}>
-              {inventory.filter((i) => i.freshness_status === "expired" || i.freshness_status === "warning").length}
+          <View style={[styles.summaryCard, styles.summaryExpired]}>
+            <Text style={[styles.summaryLabel, { flex: 1, color: "#1F1F1F" }]}>{"SUDAH\nKEDALUWARSA"}</Text>
+            <Text style={[styles.summaryNumber, { color: "#1F1F1F" }]}>
+              {inventory.filter((i) => i.freshness_status === "expired").length}
             </Text>
-            <Text style={styles.summaryUnit}>item</Text>
+            <Text style={styles.summaryUnit}> item</Text>
+          </View>
+          <View style={[styles.summaryCard, styles.summaryExpiring]}>
+            <Text style={[styles.summaryLabel, { flex: 1 }]}>{"SEGERA\nKEDALUWARSA"}</Text>
+            <Text style={styles.summaryNumber}>
+              {inventory.filter((i) => i.freshness_status === "critical").length}
+            </Text>
+            <Text style={styles.summaryUnit}> item</Text>
+          </View>
+          <View style={[styles.summaryCard, styles.summaryWarning]}>
+            <Text style={[styles.summaryLabel, { flex: 1, color: "#B45309" }]}>{"MENDEKATI\nKEDALUWARSA"}</Text>
+            <Text style={[styles.summaryNumber, { color: "#B45309" }]}>
+              {inventory.filter((i) => i.freshness_status === "warning").length}
+            </Text>
+            <Text style={styles.summaryUnit}> item</Text>
           </View>
           <View style={[styles.summaryCard, styles.summaryFresh]}>
-            <Text style={[styles.summaryLabel, { color: "#15803D" }]}>MASIH{"\n"}SEGAR</Text>
+            <Text style={[styles.summaryLabel, { flex: 1, color: "#15803D" }]}>{"MASIH\nSEGAR"}</Text>
             <Text style={[styles.summaryNumber, { color: "#15803D" }]}>
               {inventory.filter((i) => i.freshness_status === "fresh").length}
             </Text>
-            <Text style={[styles.summaryUnit, { color: "#15803D" }]}>item</Text>
+            <Text style={styles.summaryUnit}> item</Text>
           </View>
         </View>
 
@@ -514,19 +517,29 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   summaryRow: {
-    flexDirection: "row",
-    gap: 12,
+    flexDirection: "column",
+    gap: 10,
     marginBottom: 24,
   },
   summaryCard: {
-    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     borderRadius: 14,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderWidth: 1,
+  },
+  summaryExpired: {
+    backgroundColor: "#F3F4F6",
+    borderColor: "#D1D5DB",
   },
   summaryExpiring: {
     backgroundColor: "#FEF2F2",
     borderColor: "#FEE2E2",
+  },
+  summaryWarning: {
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FDE68A",
   },
   summaryFresh: {
     backgroundColor: "rgba(21, 128, 61, 0.08)",
@@ -534,22 +547,22 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontFamily: "Inter_700Bold",
-    fontSize: 11,
+    fontSize: 12,
     color: "#BB0009",
     letterSpacing: 0.5,
-    lineHeight: 16,
-    marginBottom: 8,
+    lineHeight: 18,
   },
   summaryNumber: {
     fontFamily: "Inter_700Bold",
-    fontSize: 36,
+    fontSize: 28,
     color: "#2B2B2B",
   },
   summaryUnit: {
     fontFamily: "Inter_400Regular",
-    fontSize: 15,
+    fontSize: 13,
     color: "#656C6E",
-    marginTop: -2,
+    alignSelf: "flex-end",
+    marginBottom: 3,
   },
   categorySection: {
     marginBottom: 24,

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   RefreshControl,
+  InteractionManager,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -67,13 +68,11 @@ function matchesRange(value: number, range: RangeOption | null): boolean {
 function applyFilter(
   recipes: RecommendationItem[],
   filter: FilterState,
-  search: string
 ): RecommendationItem[] {
   let result = recipes.filter((r) => {
-    const matchesSearch = r.title.toLowerCase().includes(search.toLowerCase());
     const matchesSteps = matchesRange(r.total_steps, filter.stepsRange);
     const matchesIngredients = matchesRange(r.total_ingredients, filter.ingredientsRange);
-    return matchesSearch && matchesSteps && matchesIngredients;
+    return matchesSteps && matchesIngredients;
   });
 
   if (filter.sortBy === "fastest_steps") {
@@ -95,7 +94,7 @@ function isFilterActive(filter: FilterState): boolean {
   );
 }
 
-const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
+const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
   const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { photoUri } = useAuth();
   const [search, setSearch] = useState("");
@@ -167,12 +166,24 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [fetchPopularFallback]);
 
-  // Auto-refresh saat halaman dibuka (mis. setelah user nambah bahan baru)
+  const pendingRecipeRef = useRef(route.params?.pendingRecipe);
+  pendingRecipeRef.current = route.params?.pendingRecipe;
+
+  // Auto-refresh saat halaman dibuka + handle pendingRecipe dari Beranda
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       fetchRecommendations();
-    }, [fetchRecommendations])
+
+      const pending = pendingRecipeRef.current;
+      if (!pending) return;
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        navigation.push("RecipeDetail", { recipe: pending });
+        navigation.setParams({ pendingRecipe: undefined } as any);
+      });
+      return () => task.cancel();
+    }, [fetchRecommendations, navigation])
   );
 
   const onRefresh = () => {

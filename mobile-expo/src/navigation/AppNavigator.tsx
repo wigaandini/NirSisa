@@ -25,7 +25,7 @@ import HistoryDetailScreen from "../screens/HistoryDetailScreen";
 import { RecommendationItem } from "../types/api";
 
 export type ChefAIStackParamList = {
-  RecipeRecommendation: undefined;
+  RecipeRecommendation: { pendingRecipe?: RecommendationItem } | undefined;
   RecipeDetail: { recipe: RecommendationItem };
 };
 
@@ -120,6 +120,12 @@ const MainTabs: React.FC = () => {
           tabBarIcon:  () => null,
           tabBarButton: (props) => <ChefAIFloatingButton {...props} />,
         }}
+        listeners={({ navigation: tabNav }) => ({
+          tabPress: (e) => {
+            e.preventDefault();
+            tabNav.navigate("ChefAI", { screen: "RecipeRecommendation" });
+          },
+        })}
       />
       <Tab.Screen name="Riwayat" component={RiwayatScreen} options={{ tabBarLabel: "RIWAYAT" }} />
       <Tab.Screen name="Profil"  component={ProfilScreen}  options={{ tabBarLabel: "PROFIL" }} />

@@ -26,7 +26,7 @@ interface InventoryItem {
   quantity: number;
   unit: string;
   days_remaining: number;
-  freshness_status: "fresh" | "warning" | "critical";
+  freshness_status: "expired" | "critical" | "warning" | "fresh" | "unknown";
 }
 
 const normalizeTitle = (value: string) =>
@@ -95,29 +95,14 @@ const HomeScreen: React.FC = () => {
       setTotalStock(currentTotal);
 
       const { data: stock } = await supabase
-        .from("inventory_stock")
+        .from("inventory_with_spi")
         .select("*")
         .eq("user_id", user.id)
-        .gt("quantity", 0)
+        .in("freshness_status", ["expired", "critical"])
         .order("expiry_date", { ascending: true })
-        .limit(3);
+        .limit(5);
 
-      const processedStock = (stock || []).map((item) => {
-        const expiryDate = item.expiry_date ? new Date(item.expiry_date) : null;
-        const now = new Date();
-
-        const days = expiryDate
-          ? Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 3600 * 24))
-          : 9999;
-
-        return {
-          ...item,
-          days_remaining: days,
-          freshness_status: days <= 2 ? "critical" : days <= 5 ? "warning" : "fresh",
-        };
-      });
-
-      setExpiringItems(processedStock);
+      setExpiringItems(stock || []);
 
       const { data: cookedHistory, error: cookedHistoryError } = await supabase
         .from("consumption_history")
@@ -221,7 +206,7 @@ const HomeScreen: React.FC = () => {
         </Text>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Segera Kedaluwarsa</Text>
+          <Text style={styles.sectionTitle}>Sudah & Segera Kedaluwarsa</Text>
           <TouchableOpacity onPress={() => navigation.navigate("Main", { screen: "Stok" })}>
             <Text style={styles.seeAll}>LIHAT SEMUA</Text>
           </TouchableOpacity>
@@ -279,8 +264,8 @@ const HomeScreen: React.FC = () => {
               navigation.navigate("Main", {
                 screen: "ChefAI",
                 params: {
-                  screen: "RecipeDetail",
-                  params: { recipe },
+                  screen: "RecipeRecommendation",
+                  params: { pendingRecipe: recipe },
                 },
               })
             }

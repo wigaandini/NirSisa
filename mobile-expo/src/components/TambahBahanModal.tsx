@@ -10,9 +10,9 @@ import {
   TouchableWithoutFeedback,
   TextInput,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   Switch,
+  Keyboard,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/api";
@@ -69,7 +69,20 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => setKeyboardHeight(0)
+    );
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   // Animasi Modal
   useEffect(() => {
@@ -180,7 +193,11 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
         <Animated.View style={[styles.backdrop, { opacity: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }) }]} />
       </TouchableWithoutFeedback>
 
-      <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}>
+      <Animated.View style={[
+        styles.sheet,
+        { transform: [{ translateY: slideAnim }] },
+        keyboardHeight > 0 && { height: SCREEN_HEIGHT - keyboardHeight },
+      ]}>
         <View style={styles.dragHandle} />
         <View style={styles.sheetHeader}>
           <View>
@@ -192,8 +209,11 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }} >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 320 }}
+        >
             
             <Text style={styles.fieldLabel}>NAMA BAHAN</Text>
             <TextInput style={styles.textInput} placeholder="Contoh: Wortel" value={nama} onChangeText={handleNamaChange} />
@@ -244,7 +264,7 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
               <Switch value={isNatural} onValueChange={setIsNatural} trackColor={{ true: '#BB0009' }} />
             </View>
 
-            <Text style={styles.fieldLabel}>TANGGAL KADALUWARSA (OPSIONAL)</Text>
+            <Text style={styles.fieldLabel}>TANGGAL KEDALUWARSA (OPSIONAL)</Text>
             <View style={styles.dateInputRow}>
               <TextInput style={styles.dateInput} placeholder="dd/mm/yyyy" value={tanggal} onChangeText={handleTanggalChange} keyboardType="numeric" maxLength={10} />
               <Ionicons name="calendar-outline" size={20} color="#656C6E" />
@@ -254,8 +274,7 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
               <Text style={styles.saveButtonText}>{initialData ? "Simpan Perubahan" : "Simpan ke Inventaris"}</Text>
             </TouchableOpacity>
 
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </ScrollView>
       </Animated.View>
     </Modal>
   );
