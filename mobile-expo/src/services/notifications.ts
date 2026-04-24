@@ -1,122 +1,102 @@
 // ============================================================================
-// Push Notification Service — Expo Push Notifications (Fix SDK 53 Expo Go)
+// Push Notification Service — Expo Push Notifications
 // ============================================================================
 
+import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
-import Constants, { ExecutionEnvironment } from "expo-constants";
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { api } from "./api";
 
-// Cek lingkungan runtime
-const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-const isAndroid = Platform.OS === "android";
-
-/**
- * PENTING: Di SDK 53, mengimport expo-notifications langsung akan membuat 
- * aplikasi crash di Expo Go Android. Kita gunakan require() agar library 
- * hanya dimuat jika bukan di Expo Go Android.
- */
-let Notifications: any = null;
-if (!(isExpoGo && isAndroid)) {
-  try {
-    Notifications = require("expo-notifications");
-  } catch (e) {
-    console.error("Gagal memuat expo-notifications:", e);
-  }
-}
-
-// Konfigurasi handler (hanya jika library berhasil dimuat)
-if (Notifications) {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowAlert: true,
-    }),
-  });
-}
+// Konfigurasi handler: tampilkan notif walau app foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowAlert: true,
+  }),
+});
 
 /**
  * Inisialisasi notification channel (Android).
+ * Panggil sekali saat app start (di App.tsx).
  */
 export async function initNotifications(): Promise<void> {
-  if (!Notifications || (isExpoGo && isAndroid)) {
-    console.log("[notifications] Berjalan di Expo Go Android. Init channel dilewati.");
-    return;
-  }
-
-  if (isAndroid) {
-    try {
-      await Notifications.setNotificationChannelAsync("expiry-alerts", {
-        name: "Peringatan Kedaluwarsa",
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#BB0009",
-        sound: "default",
-      });
-    } catch (err) {
-      console.log("[notifications] Gagal membuat channel:", err);
-    }
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("expiry-alerts", {
+      name: "Peringatan Kedaluwarsa",
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#BB0009",
+      sound: "default",
+    });
   }
 }
 
 /**
  * Minta izin push notification dan dapatkan Expo Push Token.
+ * Return null jika:
+ * - Bukan physical device (simulator)
+ * - Permission ditolak
+ * - Running di Expo Go (push tidak didukung)
  */
 export async function getExpoPushToken(): Promise<string | null> {
-  // 1. Cek apakah ini perangkat fisik
   if (!Device.isDevice) {
     console.log("[notifications] Bukan physical device, skip push token.");
     return null;
   }
 
-  // 2. Cek ketersediaan library (Cegah error SDK 53)
-  if (!Notifications || (isExpoGo && isAndroid)) {
-    console.warn(
-      "[notifications] Remote notifications tidak didukung di Expo Go Android (SDK 53+). " +
-      "Gunakan Development Build untuk mengetes fitur ini."
-    );
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+
+  if (existingStatus !== "granted") {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+
+  if (finalStatus !== "granted") {
+    console.log("[notifications] Permission tidak diberikan.");
     return null;
   }
 
+  // Ambil projectId dari EAS config atau Constants
+  const projectId =
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    Constants.easConfig?.projectId ??
+    undefined;
+
+  // ▼▼▼ FIX: jangan console.error (red box), pakai console.warn ▼▼▼
+  if (!projectId) {
+    console.warn(
+      "[notifications] Project ID tidak tersedia. " +
+      "Push token memerlukan EAS build, bukan Expo Go. " +
+      "Pastikan extra.eas.projectId diisi di app.json."
+    );
+    return null;
+  }
+  // ▲▲▲
+
   try {
-    // 3. Kelola Izin (Permissions)
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== "granted") {
-      console.log("[notifications] Izin notifikasi ditolak oleh pengguna.");
-      return null;
-    }
-
-    // 4. Dapatkan Project ID
-    const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ??
-      Constants.easConfig?.projectId;
-
-    if (!projectId) {
-      console.error("[notifications] Project ID tidak ditemukan di app.json.");
-      return null;
-    }
-
-    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    console.log("[notifications] Expo Push Token didapat:", tokenData.data);
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId,
+    });
+    console.log("[notifications] Expo Push Token:", tokenData.data);
     return tokenData.data;
   } catch (err) {
-    console.log("[notifications] Gagal mengambil Push Token:", (err as Error).message);
+    // Expo Go tidak mendukung push notification — ini expected, bukan fatal
+    console.log(
+      "[notifications] Push token tidak tersedia (kemungkinan Expo Go):",
+      (err as Error).message
+    );
     return null;
   }
 }
 
 /**
- * Registrasi push token ke backend.
+ * Registrasi push token ke backend NirSisa.
+ * Panggil setelah user berhasil login.
  */
 export async function registerPushToken(): Promise<boolean> {
   const token = await getExpoPushToken();
@@ -127,20 +107,18 @@ export async function registerPushToken(): Promise<boolean> {
       expo_push_token: token,
       device_info: `${Device.brand ?? "Unknown"} ${Device.modelName ?? ""}`.trim(),
     });
-    console.log("[notifications] Token berhasil didaftarkan ke server.");
+    console.log("[notifications] Token berhasil diregistrasi ke backend.");
     return true;
   } catch (err) {
-    console.warn("[notifications] Gagal mengirim token ke server:", err);
+    console.warn("[notifications] Gagal registrasi token:", err);
     return false;
   }
 }
 
 /**
- * Hapus push token dari backend.
+ * Hapus/nonaktifkan push token dari backend (saat logout).
  */
 export async function unregisterPushToken(): Promise<void> {
-  if (!Notifications || (isExpoGo && isAndroid)) return;
-
   const token = await getExpoPushToken();
   if (!token) return;
 
@@ -148,28 +126,33 @@ export async function unregisterPushToken(): Promise<void> {
     await api.delete("/notifications/token", {
       params: { expo_push_token: token },
     });
-    console.log("[notifications] Token dihapus dari backend.");
+    console.log("[notifications] Token berhasil dihapus dari backend.");
   } catch (err) {
-    console.warn("[notifications] Gagal menghapus token dari server:", err);
+    console.warn("[notifications] Gagal hapus token:", err);
   }
 }
 
-// Listener standar
+/**
+ * Listener untuk notifikasi yang diterima saat app foreground.
+ */
 export function addNotificationReceivedListener(
-  callback: (notification: any) => void
-): any {
-  if (!Notifications) return { remove: () => {} };
+  callback: (notification: Notifications.Notification) => void
+): Notifications.Subscription {
   return Notifications.addNotificationReceivedListener(callback);
 }
 
+/**
+ * Listener untuk tap notifikasi (dari background/killed state).
+ */
 export function addNotificationResponseListener(
-  callback: (response: any) => void
-): any {
-  if (!Notifications) return { remove: () => {} };
+  callback: (response: Notifications.NotificationResponse) => void
+): Notifications.Subscription {
   return Notifications.addNotificationResponseReceivedListener(callback);
 }
 
+/**
+ * Set badge count (iOS).
+ */
 export async function setBadgeCount(count: number): Promise<void> {
-  if (!Notifications || (isExpoGo && isAndroid)) return;
   await Notifications.setBadgeCountAsync(count);
 }
