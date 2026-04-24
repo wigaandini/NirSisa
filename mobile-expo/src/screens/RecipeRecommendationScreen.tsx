@@ -146,12 +146,12 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
   const fetchRecommendations = useCallback(async () => {
     try {
       setErrorMsg(null);
-      setIsPopularMode(false);
       const res = await api.get<RecommendationResponse>("/recommend", {
         params: { top_k: 20 },
       });
       setRecipes(res.data.recommendations || []);
       setMeta({ latencyMs: res.data.latency_ms, spiWeight: res.data.spi_weight });
+      setIsPopularMode(false);
     } catch (err) {
       const msg = extractApiError(err);
       console.warn("[RecipeRecommendation] fetch error:", msg);
@@ -200,11 +200,11 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
           photoUri={photoUri}
         />
 
-        {/* Title */}
-        <Text style={styles.title}>
+        {/* Title — opacity 0 saat first load supaya tidak flash judul yang salah */}
+        <Text style={[styles.title, loading && recipes.length === 0 && { opacity: 0 }]}>
           {isPopularMode ? "Resep Populer" : "Rekomendasi Menu"}
         </Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.subtitle, loading && recipes.length === 0 && { opacity: 0 }]}>
           {isPopularMode
             ? "Tambahkan bahan di tab Stok untuk rekomendasi yang lebih personal."
             : "Pilihan cerdas untuk kurangi sisa makanan hari ini."}

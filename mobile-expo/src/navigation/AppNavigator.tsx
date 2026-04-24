@@ -188,14 +188,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Wrapper diperluas ke atas agar circle yang float masih bisa di-tap
+  // Wrapper diperluas ke atas agar circle yang float masih bisa di-tap.
+  // Tidak pakai justifyContent/paddingBottom karena di Android negative marginTop
+  // menggeser semua flex children — label pakai position absolute supaya selalu
+  // menempel di bawah, tidak ikut naik.
   chefAIWrapper: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "flex-end",
-    paddingBottom: 8,
-    marginTop: -16,
-    paddingTop: 16,
+    marginTop: -26,
+    paddingTop: 26,
   },
 
   chefAICircle: {
@@ -214,6 +215,8 @@ const styles = StyleSheet.create({
   },
 
   chefAILabel: {
+    position: "absolute",
+    bottom: Platform.OS === "android" ? 9 : 8,
     fontFamily: "Inter_600SemiBold",
     fontSize: 11,
     letterSpacing: 0.55,
