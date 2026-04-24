@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Platform,
   ActivityIndicator,
   Alert,
@@ -14,16 +13,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ChefAIStackParamList } from "../navigation/AppNavigator";
 import { api, extractApiError } from "../services/api";
-import { supabase } from "../services/supabase"; // pastikan import supabase
-import { useAuth } from "../context/AuthContext"; // pastikan import auth context
+import { supabase } from "../services/supabase";
+import { useAuth } from "../context/AuthContext";
 import {
   InventoryItemResponse,
   ReconciliationRequest,
   ReconciliationResponse,
 } from "../types/api";
 import { capitalizeEachWord } from "../utils/formatters";
-
-const LOGO_IMAGE = require("../assets/images/logo.png");
+import Header from "../components/Header";
 
 type Props = NativeStackScreenProps<ChefAIStackParamList, "RecipeDetail">;
 
@@ -709,19 +707,19 @@ useEffect(() => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={22} color="#2B2B2B" />
-          </TouchableOpacity>
-          <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <TouchableOpacity style={styles.heartButton} onPress={handleToggleLike}>
-          <Ionicons 
-            name={isLiked ? "heart" : "heart-outline"} // Berubah jadi hati penuh jika isLiked true
-            size={22} 
-            color={isLiked ? "#BB0009" : "#2B2B2B"} // Berubah warna jadi merah jika isLiked true
-          />         
-        </TouchableOpacity>
-        </View>
+        <Header
+          variant="back"
+          onBack={() => navigation.goBack()}
+          rightElement={
+            <TouchableOpacity style={styles.heartButton} onPress={handleToggleLike}>
+              <Ionicons
+                name={isLiked ? "heart" : "heart-outline"}
+                size={22}
+                color={isLiked ? "#BB0009" : "#2B2B2B"}
+              />
+            </TouchableOpacity>
+          }
+        />
 
         <Text style={styles.title}>{capitalizeEachWord(recipe.title)}</Text>
 
@@ -810,24 +808,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: Platform.OS === "ios" ? 60 : 40,
     paddingBottom: 20,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 24,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#F0F0F0",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoSmall: {
-    width: 56,
-    height: 32,
   },
   heartButton: {
     width: 36,

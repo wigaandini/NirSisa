@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   TextInput,
   Platform,
   ActivityIndicator,
@@ -17,11 +16,11 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ChefAIStackParamList, RootStackParamList } from "../navigation/AppNavigator";
 import FilterModal, { DEFAULT_FILTER, FilterState, RangeOption } from "../components/FilterModal";
+import Header from "../components/Header";
 import { api, extractApiError } from "../services/api";
 import { RecommendationItem, RecommendationResponse } from "../types/api";
 import { capitalizeEachWord } from "../utils/formatters";
-
-const LOGO_IMAGE = require("../assets/images/logo.png");
+import { useAuth } from "../context/AuthContext";
 
 type Props = NativeStackScreenProps<ChefAIStackParamList, "RecipeRecommendation">;
 
@@ -98,6 +97,7 @@ function isFilterActive(filter: FilterState): boolean {
 
 const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
   const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { photoUri } = useAuth();
   const [search, setSearch] = useState("");
   const [filterVisible, setFilterVisible] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterState>(DEFAULT_FILTER);
@@ -194,18 +194,11 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BB0009" />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifButton} onPress={() => rootNavigation.navigate("Notification")}>
-              <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
-            </TouchableOpacity>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={20} color="#FFFFFF" />
-            </View>
-          </View>
-        </View>
+        <Header
+          onNotificationPress={() => rootNavigation.navigate("Notification")}
+          onAvatarPress={() => rootNavigation.navigate("Main", { screen: "Profil" } as any)}
+          photoUri={photoUri}
+        />
 
         {/* Title */}
         <Text style={styles.title}>
@@ -385,32 +378,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: Platform.OS === "ios" ? 60 : 40,
     paddingBottom: 20,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  logoSmall: {
-    width: 56,
-    height: 32,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  notifButton: {
-    padding: 4,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#36393B",
-    alignItems: "center",
-    justifyContent: "center",
   },
   title: {
     fontFamily: "Inter_700Bold",

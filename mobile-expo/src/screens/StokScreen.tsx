@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Image,
   Platform,
   ActivityIndicator,
   Alert,
@@ -15,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import TambahBahanModal, { BahanBaru } from "../components/TambahBahanModal";
 import StokFilterModal, { DEFAULT_STOK_FILTER, StokFilter } from "../components/StokFilterModal";
+import Header from "../components/Header";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
@@ -23,7 +23,6 @@ import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { capitalizeEachWord, formatCategoryLabel } from "../utils/formatters";
 
-const LOGO_IMAGE = require("../assets/images/logo.png");
 const API_URL = "https://nirsisa-production.up.railway.app";
 
 interface InventoryItem {
@@ -326,22 +325,11 @@ const StokScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BB0009" />}
       >
-        <View style={styles.header}>
-          <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifButton}>
-              <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.avatar}
-              onPress={() => navigation.navigate("Main", { screen: "Profil" } as any)}
-            >
-              {photoUri
-                ? <Image source={{ uri: photoUri }} style={{ width: 40, height: 40, borderRadius: 20 }} />
-                : <Ionicons name="person" size={20} color="#FFFFFF" />}
-            </TouchableOpacity>
-          </View>
-        </View>
+        <Header
+          onNotificationPress={() => navigation.navigate("Notification")}
+          onAvatarPress={() => navigation.navigate("Main", { screen: "Profil" } as any)}
+          photoUri={photoUri}
+        />
 
         <View style={styles.searchRow}>
           <View style={styles.searchBar}>
@@ -473,32 +461,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: Platform.OS === "ios" ? 60 : 40,
     paddingBottom: 20,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  logoSmall: {
-    width: 56,
-    height: 32,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  notifButton: {
-    padding: 4,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#36393B",
-    alignItems: "center",
-    justifyContent: "center",
   },
   searchRow: {
     flexDirection: "row",
