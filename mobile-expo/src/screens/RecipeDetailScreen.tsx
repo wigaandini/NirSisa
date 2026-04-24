@@ -257,12 +257,10 @@ const scoreInventoryMatch = (
   if (hasWholePhrase(ingredientNormalized, inventoryName)) {
     finalScore = 100 + inventoryName.length;
   }
-  // ▼▼▼ FIX BUG 6: Case 2 — ingredient keyword appears inside inventory name ▼▼▼
   // e.g. ingredient "telur" is contained in inventory "telur ayam"
-  // Ini menangani kasus dimana user punya "telur ayam" tapi resep cuma sebut "telur"
-  // SAFEGUARD: kata PERTAMA inventory (noun utama) HARUS cocok ke salah satu
-  // token ingredient. Ini mencegah false positive seperti "ayam goreng" match "telur ayam"
-  // hanya karena kata "ayam" muncul di keduanya.
+  // Menangani kasus dimana user punya "telur ayam" tapi resep cuma sebut "telur"
+  // SAFEGUARD: kata pertama inventory (noun utama) harus cocok ke salah satu token ingredient. 
+  // Mencegah false positive seperti "ayam goreng" match "telur ayam" hanya karena kata "ayam" muncul di keduanya.
   else if (
     ingredientTokens.length > 0 &&
     inventoryTokens.length > 0 &&
@@ -274,7 +272,6 @@ const scoreInventoryMatch = (
     ).length;
     finalScore = 85 + matchCount;
   }
-  // ▲▲▲
   else {
     const ingredientSet = new Set(ingredientTokens);
     const overlap = inventoryTokens.filter((token) => ingredientSet.has(token)).length;
@@ -634,10 +631,6 @@ useEffect(() => {
   const hasIssues = ingredientList.some((item) => item.status !== "safe");
 
   const handleKonfirmasiMasak = async () => {
-    // ▼▼▼ FIX BUG 3: JANGAN blokir konfirmasi masak hanya karena
-    // tidak ada bahan yang match. User tetap boleh masak dan simpan riwayat.
-    // Backend sudah support ingredients_used: [] (riwayat saja tanpa deduction).
-    // ▲▲▲
 
     const summary =
       payloadIngredients.length > 0

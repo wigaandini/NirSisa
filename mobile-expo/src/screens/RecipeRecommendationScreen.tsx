@@ -17,11 +17,9 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ChefAIStackParamList, RootStackParamList } from "../navigation/AppNavigator";
 import FilterModal, { DEFAULT_FILTER, FilterState, RangeOption } from "../components/FilterModal";
-// ▼▼▼ FIX: ganti dummy data ke API client + types ▼▼▼
 import { api, extractApiError } from "../services/api";
 import { RecommendationItem, RecommendationResponse } from "../types/api";
 import { capitalizeEachWord } from "../utils/formatters";
-// ▲▲▲
 
 const LOGO_IMAGE = require("../assets/images/logo.png");
 
@@ -110,7 +108,6 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
   const [filterVisible, setFilterVisible] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterState>(DEFAULT_FILTER);
 
-  // ▼▼▼ FIX: state untuk hasil API ▼▼▼
   const [recipes, setRecipes] = useState<RecommendationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -261,9 +258,7 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
                   { borderLeftColor: config.borderColor, backgroundColor: config.bgColor },
                 ]}
                 activeOpacity={0.75}
-                // ▼▼▼ FIX: pass full recipe object via params ▼▼▼
                 onPress={() => navigation.navigate("RecipeDetail", { recipe })}
-                // ▲▲▲
               >
                 {/* Status Badge */}
                 <View style={[styles.statusBadge, { backgroundColor: config.badgeColor }]}>

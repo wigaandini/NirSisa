@@ -526,7 +526,6 @@ const ProfilScreen: React.FC = () => {
     }
   };
 
-  // ▼▼▼ FIX BUG 2: useFocusEffect agar count refresh saat kembali ke halaman ▼▼▼
   useFocusEffect(
     useCallback(() => {
       if (!session) return;
@@ -545,8 +544,7 @@ const ProfilScreen: React.FC = () => {
           }
         });
 
-      // ▼▼▼ FIX: "Bahan Diselamatkan" = total bahan yang pernah dimasak,
-      // bukan stok saat ini. Query dari consumption_history_items.
+      // "Bahan Diselamatkan" = total bahan yang pernah dimasak, bukan stok saat ini. Query dari consumption_history_items.
       supabase
         .from("consumption_history_items")
         .select("id", { count: "exact", head: true })
@@ -569,7 +567,6 @@ const ProfilScreen: React.FC = () => {
             setBahanCount(count ?? 0);
           }
         });
-      // ▲▲▲
 
       supabase
         .from("user_favorites")
@@ -578,7 +575,6 @@ const ProfilScreen: React.FC = () => {
         .then(({ count }) => setResepCount(count ?? 0));
     }, [session])
   );
-  // ▲▲▲
 
   const handleSaveName = async () => {
     if (!session?.user?.id) return;

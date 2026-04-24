@@ -6,11 +6,9 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signOut: () => Promise<void>;
-  // ▼▼▼ FIX BUG 1: foto profil persisten ▼▼▼
   photoUri: string | null;
   setPhotoUri: (uri: string | null) => void;
   uploadAndPersistPhoto: (localUri: string) => Promise<string | null>;
-  // ▲▲▲
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -53,7 +51,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => subscription.unsubscribe();
   }, []);
 
-  // ▼▼▼ FIX BUG 1: load avatar_url dari tabel profiles saat login ▼▼▼
   const loadAvatarFromDB = async (userId: string) => {
     try {
       const { data } = await supabase
@@ -84,7 +81,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const filePath = `${userId}/avatar.${fileExt}`;
       const contentType = fileExt === "jpg" ? "image/jpeg" : `image/${fileExt}`;
 
-      // ▼▼▼ FIX: React Native tidak support blob() dengan benar untuk file lokal.
       // Pakai arrayBuffer() yang reliable di semua platform.
       const response = await fetch(localUri);
       const arrayBuffer = await response.arrayBuffer();
@@ -96,7 +92,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           upsert: true,
           contentType,
         });
-      // ▲▲▲
 
       if (uploadError) {
         console.error("[AuthContext] upload error:", uploadError.message);
@@ -130,7 +125,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return null;
     }
   };
-  // ▲▲▲
 
   const signOut = async () => {
     setPhotoUri(null);
