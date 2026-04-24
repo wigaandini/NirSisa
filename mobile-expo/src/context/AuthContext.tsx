@@ -80,23 +80,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     try {
       const userId = session.user.id;
-      const fileExt = localUri.split(".").pop() || "jpg";
+      const fileExt = localUri.split(".").pop()?.toLowerCase() || "jpg";
       const filePath = `${userId}/avatar.${fileExt}`;
+      const contentType = fileExt === "jpg" ? "image/jpeg" : `image/${fileExt}`;
 
-      // Baca file sebagai blob
+      // ▼▼▼ FIX: React Native tidak support blob() dengan benar untuk file lokal.
+      // Pakai arrayBuffer() yang reliable di semua platform.
       const response = await fetch(localUri);
-      const blob = await response.blob();
+      const arrayBuffer = await response.arrayBuffer();
 
-      // Upload ke Supabase Storage (bucket "avatars")
-      // Pastikan bucket "avatars" sudah dibuat di Supabase Dashboard > Storage
-      // dengan policy public read, authenticated upload
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(filePath, blob, {
+        .upload(filePath, arrayBuffer, {
           cacheControl: "3600",
-          upsert: true,           // timpa file lama
-          contentType: `image/${fileExt}`,
+          upsert: true,
+          contentType,
         });
+      // ▲▲▲
 
       if (uploadError) {
         console.error("[AuthContext] upload error:", uploadError.message);

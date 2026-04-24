@@ -501,6 +501,7 @@ const ProfilScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { session, signOut, photoUri: contextPhotoUri, setPhotoUri, uploadAndPersistPhoto } = useAuth();
   const [localPhotoUri, setLocalPhotoUri] = useState<string | null>(contextPhotoUri);
+  const [photoLoadError, setPhotoLoadError] = useState(false);
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const [editProfileVisible, setEditProfileVisible] = useState(false);
   const [gantiFotoVisible, setGantiFotoVisible] = useState(false);
@@ -513,16 +514,16 @@ const ProfilScreen: React.FC = () => {
   // Keep local copy in sync when context changes (e.g. first load)
   useEffect(() => {
     setLocalPhotoUri(contextPhotoUri);
+    setPhotoLoadError(false);
   }, [contextPhotoUri]);
 
   const handlePhotoSelected = async (uri: string) => {
-    setLocalPhotoUri(uri);   // updates this screen immediately (optimistic)
-    // ▼▼▼ FIX BUG 1: upload ke Supabase Storage + simpan URL ke profiles.avatar_url ▼▼▼
+    setLocalPhotoUri(uri);
+    setPhotoLoadError(false);
     const persistedUrl = await uploadAndPersistPhoto(uri);
     if (persistedUrl) {
-      setLocalPhotoUri(persistedUrl); // gunakan URL persisten
+      setLocalPhotoUri(persistedUrl);
     }
-    // ▲▲▲
   };
 
   // ▼▼▼ FIX BUG 2: useFocusEffect agar count refresh saat kembali ke halaman ▼▼▼
@@ -544,11 +545,31 @@ const ProfilScreen: React.FC = () => {
           }
         });
 
+      // ▼▼▼ FIX: "Bahan Diselamatkan" = total bahan yang pernah dimasak,
+      // bukan stok saat ini. Query dari consumption_history_items.
       supabase
-        .from("inventory_with_spi")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", session.user.id)
-        .then(({ count }) => setBahanCount(count ?? 0));
+        .from("consumption_history_items")
+        .select("id", { count: "exact", head: true })
+        .eq("consumption_history.user_id", session.user.id)
+        .then(({ count, error }) => {
+          if (error) {
+            // Fallback: hitung dari consumption_history jika join gagal
+            supabase
+              .from("consumption_history")
+              .select("id, consumption_history_items(id)")
+              .eq("user_id", session.user.id)
+              .then(({ data }) => {
+                const total = (data || []).reduce(
+                  (sum: number, h: any) => sum + (h.consumption_history_items?.length || 0),
+                  0
+                );
+                setBahanCount(total);
+              });
+          } else {
+            setBahanCount(count ?? 0);
+          }
+        });
+      // ▲▲▲
 
       supabase
         .from("user_favorites")
@@ -626,8 +647,12 @@ const ProfilScreen: React.FC = () => {
               <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={1} style={styles.avatar}>
-              {localPhotoUri
-                ? <Image source={{ uri: localPhotoUri }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+              {localPhotoUri && !photoLoadError
+                ? <Image
+                    source={{ uri: localPhotoUri }}
+                    style={{ width: 40, height: 40, borderRadius: 20 }}
+                    onError={() => setPhotoLoadError(true)}
+                  />
                 : <Ionicons name="person" size={20} color="#FFFFFF" />}
             </TouchableOpacity>
           </View>
@@ -644,10 +669,11 @@ const ProfilScreen: React.FC = () => {
                 style={styles.avatarGradientRing}
               >
                 <View style={styles.avatarInner}>
-                  {localPhotoUri ? (
+                  {localPhotoUri && !photoLoadError ? (
                     <Image
                       source={{ uri: localPhotoUri }}
                       style={{ width: 100, height: 100, borderRadius: 50 }}
+                      onError={() => setPhotoLoadError(true)}
                     />
                   ) : (
                     <Ionicons name="person" size={52} color="#FFFFFF" />
