@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { Linking } from "react-native";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
 
@@ -7,8 +6,11 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  // ▼▼▼ FIX BUG 1: foto profil persisten ▼▼▼
   photoUri: string | null;
   setPhotoUri: (uri: string | null) => void;
+  uploadAndPersistPhoto: (localUri: string) => Promise<string | null>;
+  // ▲▲▲
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -17,6 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
   photoUri: null,
   setPhotoUri: () => {},
+  uploadAndPersistPhoto: async () => null,
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -29,6 +32,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      if (session?.user) {
+        loadAvatarFromDB(session.user.id);
+      }
       setLoading(false);
     });
 
@@ -36,31 +42,112 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-    });
-
-    const linkingSub = Linking.addEventListener("url", async ({ url }) => {
-      if (!url) return;
-      const hash = url.split("#")[1] ?? "";
-      const params = new URLSearchParams(hash);
-      const access_token = params.get("access_token");
-      const refresh_token = params.get("refresh_token");
-      if (access_token && refresh_token) {
-        await supabase.auth.setSession({ access_token, refresh_token });
+      if (session?.user) {
+        loadAvatarFromDB(session.user.id);
+      } else {
+        // Logout → reset foto
+        setPhotoUri(null);
       }
     });
 
-    return () => {
-      subscription.unsubscribe();
-      linkingSub.remove();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
+  // ▼▼▼ FIX BUG 1: load avatar_url dari tabel profiles saat login ▼▼▼
+  const loadAvatarFromDB = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", userId)
+        .single();
+
+      if (data?.avatar_url) {
+        setPhotoUri(data.avatar_url);
+      }
+    } catch (err) {
+      console.warn("[AuthContext] gagal load avatar:", err);
+    }
+  };
+
+  /**
+   * Upload foto lokal ke Supabase Storage bucket 'avatars',
+   * lalu simpan public URL ke profiles.avatar_url.
+   * Return public URL jika berhasil, null jika gagal.
+   */
+  const uploadAndPersistPhoto = async (localUri: string): Promise<string | null> => {
+    if (!session?.user?.id) return null;
+
+    try {
+      const userId = session.user.id;
+      const fileExt = localUri.split(".").pop() || "jpg";
+      const filePath = `${userId}/avatar.${fileExt}`;
+
+      // Baca file sebagai blob
+      const response = await fetch(localUri);
+      const blob = await response.blob();
+
+      // Upload ke Supabase Storage (bucket "avatars")
+      // Pastikan bucket "avatars" sudah dibuat di Supabase Dashboard > Storage
+      // dengan policy public read, authenticated upload
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, blob, {
+          cacheControl: "3600",
+          upsert: true,           // timpa file lama
+          contentType: `image/${fileExt}`,
+        });
+
+      if (uploadError) {
+        console.error("[AuthContext] upload error:", uploadError.message);
+        return null;
+      }
+
+      // Dapatkan public URL
+      const { data: urlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) return null;
+
+      // Tambah cache-buster agar image component force re-fetch
+      const finalUrl = `${publicUrl}?t=${Date.now()}`;
+
+      // Simpan ke tabel profiles
+      await supabase
+        .from("profiles")
+        .update({
+          avatar_url: finalUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      setPhotoUri(finalUrl);
+      return finalUrl;
+    } catch (err) {
+      console.error("[AuthContext] uploadAndPersistPhoto error:", err);
+      return null;
+    }
+  };
+  // ▲▲▲
+
   const signOut = async () => {
+    setPhotoUri(null);
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ session, loading, signOut, photoUri, setPhotoUri }}>
+    <AuthContext.Provider
+      value={{
+        session,
+        loading,
+        signOut,
+        photoUri,
+        setPhotoUri,
+        uploadAndPersistPhoto,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -119,6 +119,14 @@ def send_expo_push(
             "title": title,
             "body": body,
             "data": data or {},
+            # ▼▼▼ FIX BUG 4: channelId + priority agar pop-up muncul di Android ▼▼▼
+            # Tanpa channelId, Android SDK 26+ akan drop notifikasi secara diam-diam
+            # karena tidak tahu harus pakai notification channel yang mana.
+            # channelId ini HARUS cocok dengan yang didefinisikan di frontend
+            # (notifications.ts → setNotificationChannelAsync("expiry-alerts"))
+            "channelId": "expiry-alerts",
+            "priority": "high",
+            # ▲▲▲
         }
         for token in tokens
     ]

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "NirSisa",
+    "name": "mobile-expo",
     "slug": "mobile-expo",
     "version": "1.0.0",
     "scheme": "nirsisa",
@@ -23,7 +23,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
+      "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "adjustResize"
     },
@@ -41,11 +41,6 @@
           "color": "#BB0009"
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "44cbef6c-683c-47e6-a89a-53adca3f9cb5"
-      }
-    }
+    ]
   }
 }

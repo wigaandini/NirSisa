@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
@@ -498,7 +499,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, name, emai
 // ── Main Screen ────────────────────────────────────────────────
 const ProfilScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { session, signOut, photoUri: contextPhotoUri, setPhotoUri } = useAuth();
+  const { session, signOut, photoUri: contextPhotoUri, setPhotoUri, uploadAndPersistPhoto } = useAuth();
   const [localPhotoUri, setLocalPhotoUri] = useState<string | null>(contextPhotoUri);
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const [editProfileVisible, setEditProfileVisible] = useState(false);
@@ -514,40 +515,49 @@ const ProfilScreen: React.FC = () => {
     setLocalPhotoUri(contextPhotoUri);
   }, [contextPhotoUri]);
 
-  const handlePhotoSelected = (uri: string) => {
-    setLocalPhotoUri(uri);   // updates this screen immediately
-    setPhotoUri(uri);        // broadcasts to other screens via context
+  const handlePhotoSelected = async (uri: string) => {
+    setLocalPhotoUri(uri);   // updates this screen immediately (optimistic)
+    // ▼▼▼ FIX BUG 1: upload ke Supabase Storage + simpan URL ke profiles.avatar_url ▼▼▼
+    const persistedUrl = await uploadAndPersistPhoto(uri);
+    if (persistedUrl) {
+      setLocalPhotoUri(persistedUrl); // gunakan URL persisten
+    }
+    // ▲▲▲
   };
 
-  useEffect(() => {
-    if (!session) return;
-    setProfileEmail(session.user.email ?? "");
-    supabase
-      .from("profiles")
-      .select("display_name")
-      .eq("id", session.user.id)
-      .single()
-      .then(({ data }) => {
-        if (data?.display_name) {
-          setProfileName(data.display_name);
-        } else {
-          const metaName = session.user.user_metadata?.display_name ?? "";
-          setProfileName(metaName);
-        }
-      });
+  // ▼▼▼ FIX BUG 2: useFocusEffect agar count refresh saat kembali ke halaman ▼▼▼
+  useFocusEffect(
+    useCallback(() => {
+      if (!session) return;
+      setProfileEmail(session.user.email ?? "");
+      supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("id", session.user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.display_name) {
+            setProfileName(data.display_name);
+          } else {
+            const metaName = session.user.user_metadata?.display_name ?? "";
+            setProfileName(metaName);
+          }
+        });
 
-    supabase
-      .from("inventory_with_spi")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", session.user.id)
-      .then(({ count }) => setBahanCount(count ?? 0));
+      supabase
+        .from("inventory_with_spi")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", session.user.id)
+        .then(({ count }) => setBahanCount(count ?? 0));
 
-    supabase
-      .from("user_favorites")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", session.user.id)
-      .then(({ count }) => setResepCount(count ?? 0));
-  }, [session]);
+      supabase
+        .from("user_favorites")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", session.user.id)
+        .then(({ count }) => setResepCount(count ?? 0));
+    }, [session])
+  );
+  // ▲▲▲
 
   const handleSaveName = async () => {
     if (!session?.user?.id) return;

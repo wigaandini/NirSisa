@@ -252,9 +252,30 @@ const scoreInventoryMatch = (
 
   let finalScore = 0;
 
+  // Case 1: inventory name appears as whole phrase in ingredient text
+  // e.g. ingredient "2 buah telur ayam" contains "telur ayam"
   if (hasWholePhrase(ingredientNormalized, inventoryName)) {
     finalScore = 100 + inventoryName.length;
-  } else {
+  }
+  // ▼▼▼ FIX BUG 6: Case 2 — ingredient keyword appears inside inventory name ▼▼▼
+  // e.g. ingredient "telur" is contained in inventory "telur ayam"
+  // Ini menangani kasus dimana user punya "telur ayam" tapi resep cuma sebut "telur"
+  // SAFEGUARD: kata PERTAMA inventory (noun utama) HARUS cocok ke salah satu
+  // token ingredient. Ini mencegah false positive seperti "ayam goreng" match "telur ayam"
+  // hanya karena kata "ayam" muncul di keduanya.
+  else if (
+    ingredientTokens.length > 0 &&
+    inventoryTokens.length > 0 &&
+    ingredientTokens.some((token) => token === inventoryTokens[0]) &&
+    ingredientTokens.some((token) => hasWholePhrase(inventoryName, token))
+  ) {
+    const matchCount = ingredientTokens.filter((token) =>
+      hasWholePhrase(inventoryName, token)
+    ).length;
+    finalScore = 85 + matchCount;
+  }
+  // ▲▲▲
+  else {
     const ingredientSet = new Set(ingredientTokens);
     const overlap = inventoryTokens.filter((token) => ingredientSet.has(token)).length;
     if (inventoryTokens.length > 0) {
@@ -613,13 +634,10 @@ useEffect(() => {
   const hasIssues = ingredientList.some((item) => item.status !== "safe");
 
   const handleKonfirmasiMasak = async () => {
-    if (!hasAnyMatchedIngredients) {
-      Alert.alert(
-        "Belum Bisa Dikonfirmasi",
-        "Belum ada bahan resep yang cocok dengan stok Anda. Tambahkan minimal satu bahan yang relevan ke stok terlebih dahulu."
-      );
-      return;
-    }
+    // ▼▼▼ FIX BUG 3: JANGAN blokir konfirmasi masak hanya karena
+    // tidak ada bahan yang match. User tetap boleh masak dan simpan riwayat.
+    // Backend sudah support ingredients_used: [] (riwayat saja tanpa deduction).
+    // ▲▲▲
 
     const summary =
       payloadIngredients.length > 0
@@ -633,9 +651,11 @@ useEffect(() => {
             .join("\n")
         : "• Tidak ada bahan yang bisa dipotong otomatis dari stok";
 
-    const note = hasIssues
-      ? "\n\nCatatan: bahan yang tidak cocok, ambigu, atau stoknya tidak cukup tetap tidak akan menghalangi konfirmasi masak. Hanya bahan yang tervalidasi yang akan dipotong otomatis."
-      : "";
+    const note = !hasAnyMatchedIngredients
+      ? "\n\nCatatan: tidak ada bahan di stok yang cocok dengan resep ini. Riwayat masak tetap akan disimpan tanpa pengurangan stok."
+      : hasIssues
+        ? "\n\nCatatan: bahan yang tidak cocok, ambigu, atau stoknya tidak cukup tetap tidak akan menghalangi konfirmasi masak. Hanya bahan yang tervalidasi yang akan dipotong otomatis."
+        : "";
 
     Alert.alert(
       "Konfirmasi Masak",
