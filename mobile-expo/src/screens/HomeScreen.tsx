@@ -168,7 +168,9 @@ const HomeScreen: React.FC = () => {
   const getBadgeInfo = (days: number) => {
     if (days <= 0) return { label: "EXPIRED", color: "#000000" };
     if (days === 1) return { label: "BESOK", color: "#BB0009" };
-    return { label: `${days} HARI LAGI`, color: days <= 2 ? "#BB0009" : "#FDCB52" };
+    if (days <= 2) return { label: `${days} HARI LAGI`, color: "#BB0009" };
+    if (days <= 5) return { label: `${days} HARI LAGI`, color: "#FDCB52" };
+    return { label: `${days} HARI LAGI`, color: "#15803D" };
   };
 
   const getCardColors = (days: number) => {
