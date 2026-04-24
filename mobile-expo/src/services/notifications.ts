@@ -67,7 +67,6 @@ export async function getExpoPushToken(): Promise<string | null> {
     Constants.easConfig?.projectId ??
     undefined;
 
-  // ▼▼▼ FIX: jangan console.error (red box), pakai console.warn ▼▼▼
   if (!projectId) {
     console.warn(
       "[notifications] Project ID tidak tersedia. " +
@@ -76,7 +75,6 @@ export async function getExpoPushToken(): Promise<string | null> {
     );
     return null;
   }
-  // ▲▲▲
 
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({

@@ -54,7 +54,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   // ─── CORE AUTH SETUP ────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
-      // ▼▼▼ FIX Error 2: handle "Refresh Token Not Found" gracefully ▼▼▼
       if (error) {
         console.warn("[AuthContext] getSession error (stale token?):", error.message);
         // Session rusak — bersihkan dan arahkan ke login
@@ -63,7 +62,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setLoading(false);
         return;
       }
-      // ▲▲▲
       setSession(session);
       if (session?.user) {
         loadAvatarFromDB(session.user.id);
