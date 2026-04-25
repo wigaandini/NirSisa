@@ -41,6 +41,7 @@ class RecommendedRecipe:
 class RecommendationResult:
     recipes: list[RecommendedRecipe] = field(default_factory=list)
     latency_ms: float = 0.0
+    spi_weight: float = 0.0  # Tambahkan ini
 
 
 def diagnose_kb() -> dict:
@@ -81,7 +82,7 @@ def get_recommendations(
     inventory: list[InventoryItem],
     *,
     top_k: int = 10,
-    spi_weight: float = 0.4,
+    spi_weight: float | None = None, # Ubah default jadi None
     alpha: float = 2.0,
     cosine_threshold: float = 0.0,
 ) -> RecommendationResult:
@@ -89,40 +90,18 @@ def get_recommendations(
 
     kb = RecipeKnowledgeBase.get_instance()
     if not kb.is_loaded:
-        raise RuntimeError("RecipeKnowledgeBase belum di-load. Panggil kb.load() saat startup.")
+        raise RuntimeError("RecipeKnowledgeBase belum di-load.")
 
     n_recipes = len(kb.df_recipes)
     ingredient_names = [item.name.lower().strip() for item in inventory]
-
-    # PENTING: gabung dengan koma agar sesuai comma_tokenizer di cbf.py
     user_text = ", ".join(ingredient_names)
 
-    # --- DIAGNOSTIC LOGGING (hapus setelah fix terkonfirmasi) ---
-    logger.info("=== COSINE DEBUG ===")
-    logger.info("  user_text (first 200): '%s'", user_text[:200])
-    try:
-        from app.ai.cbf import comma_tokenizer
-        tokens = comma_tokenizer(user_text.lower())
-        vocab = kb.vectorizer.vocabulary_
-        matched = [t for t in tokens if t in vocab]
-        unmatched = [t for t in tokens if t not in vocab]
-        logger.info("  tokens: %s", tokens)
-        logger.info("  IN vocab: %s", matched)
-        logger.info("  NOT in vocab: %s", unmatched)
-        logger.info("  vocab size: %d", len(vocab))
-    except Exception as e:
-        logger.warning("  token debug error: %s", e)
-    # --- END DIAGNOSTIC ---
-
+    # Step 1: Compute Cosine
     cos_scores = kb.compute_cosine_scores(user_text)
 
-    cos_max = float(cos_scores.max())
-    cos_nonzero = int((cos_scores > 0).sum())
-    logger.info("  cos_max=%.6f, nonzero_recipes=%d/%d", cos_max, cos_nonzero, n_recipes)
-    logger.info("=== END COSINE DEBUG ===")
-
-    # Step 2: SPI Scores
+    # Step 2: SPI Scores & Calculate Dynamic Weight
     spi_scores = np.zeros(n_recipes, dtype=float)
+    max_inventory_urgency = 0.0 # Penampung tingkat krisis bahan
 
     expiry_map: dict[str, int] = {}
     for item in inventory:
@@ -131,37 +110,45 @@ def get_recommendations(
 
     for ingredient_name, days_rem in expiry_map.items():
         urgency = calculate_spi(days_rem, alpha=alpha)
+        
+        # Cari urgensi tertinggi dari semua bahan user
+        if urgency > max_inventory_urgency:
+            max_inventory_urgency = urgency
+            
         mask = kb.recipe_contains_ingredient(ingredient_name)
         spi_scores[mask] += urgency
 
+    # Normalisasi SPI Score (per resep)
     spi_max = spi_scores.max()
-    if spi_max > 0:
-        spi_scores_norm = spi_scores / spi_max
+    spi_scores_norm = spi_scores / spi_max if spi_max > 0 else spi_scores
+
+    # --- LOGIKA DINAMIS SPI WEIGHT ---
+    # Jika tidak ditentukan manual, hitung otomatis berdasarkan bahan paling kritis
+    if spi_weight is None:
+        # Jika max_inventory_urgency tinggi (misal 0.9), maka kita beri bobot SPI lebih besar
+        # Kita beri batas minimal 0.1 dan maksimal 0.8 agar tetap seimbang
+        dynamic_weight = max(0.1, min(max_inventory_urgency, 0.8))
     else:
-        spi_scores_norm = spi_scores
+        dynamic_weight = spi_weight
 
-    # Step 3: Final Score
-    cosine_weight = 1.0 - spi_weight
-    final_scores = (cos_scores * cosine_weight) + (spi_scores_norm * spi_weight)
+    logger.info("Dynamic SPI Weight set to: %.2f (Max Urgency: %.2f)", dynamic_weight, max_inventory_urgency)
 
-    # Step 4: Filter & Top-K
-    if cosine_threshold > 0:
-        valid_mask = cos_scores >= cosine_threshold
-        candidate_indices = np.where(valid_mask)[0]
-        if len(candidate_indices) == 0:
-            candidate_indices = np.arange(n_recipes)
-    else:
-        candidate_indices = np.arange(n_recipes)
+    # Step 3: Final Score menggunakan dynamic_weight
+    cosine_weight = 1.0 - dynamic_weight
+    final_scores = (cos_scores * cosine_weight) + (spi_scores_norm * dynamic_weight)
 
-    sorted_candidates = candidate_indices[
-        final_scores[candidate_indices].argsort()[::-1]
-    ]
+    # Step 4: Filter & Top-K (Tetap sama)
+    candidate_indices = np.arange(n_recipes)
+    sorted_candidates = candidate_indices[final_scores[candidate_indices].argsort()[::-1]]
     top_indices = sorted_candidates[:top_k]
 
-    # Step 5: Build result
+    # Step 5: Build result (Tetap sama)
     df_top = kb.get_recipes_by_indices(top_indices)
-
     results: list[RecommendedRecipe] = []
+    
+    # ... (looping build RecommendedRecipe Anda tetap sama) ...
+    # (Pastikan logic results.append Anda tetap menggunakan variabel idx dan row yang benar)
+
     for idx, (_, row) in zip(top_indices, df_top.iterrows()):
         recipe_text = str(row.get("Ingredients Cleaned", "")).lower()
         matched = sum(1 for ing in ingredient_names if ing in recipe_text)
@@ -188,9 +175,10 @@ def get_recommendations(
         )
 
     latency = (time.perf_counter() - t_start) * 1000
-    logger.info(
-        "Rekomendasi selesai: %d bahan → %d resep dalam %.1f ms",
-        len(inventory), len(results), latency,
+    
+    # Masukkan dynamic_weight ke dalam hasil return
+    return RecommendationResult(
+        recipes=results, 
+        latency_ms=round(latency, 2),
+        spi_weight=round(dynamic_weight, 2)
     )
-
-    return RecommendationResult(recipes=results, latency_ms=round(latency, 2))

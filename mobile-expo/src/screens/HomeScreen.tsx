@@ -186,6 +186,10 @@ const HomeScreen: React.FC = () => {
                 <Ionicons name="cube-outline" size={14} color="#656C6E" />
                 <Text style={styles.recipeMetaText}>{recipe.total_ingredients} Bahan</Text>
               </View>
+              <View style={styles.recipeMetaItem}>
+                <Ionicons name="heart" size={14} color="#BB0009" />
+                <Text style={styles.recipeMetaText}>{recipe.loves ?? 0} Suka</Text>
+            </View>
             </View>
           </TouchableOpacity>
         ))}

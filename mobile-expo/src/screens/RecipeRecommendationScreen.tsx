@@ -27,9 +27,16 @@ type Props = NativeStackScreenProps<ChefAIStackParamList, "RecipeRecommendation"
 
 type DerivedStatus = "expired_soon" | "approaching" | "fresh";
 
+/**
+ * Logika penentuan status berdasarkan skor SPI (0.0 - 1.0)
+ * Kita naikkan threshold agar bahan segar tidak langsung jadi merah.
+ */
 const deriveStatus = (item: RecommendationItem): DerivedStatus => {
-  if (item.spi_score >= 0.5) return "expired_soon";
-  if (item.spi_score >= 0.15) return "approaching";
+  // Jika SPI sangat tinggi (di atas 0.8), berarti ada bahan yang kritis/kedaluwarsa
+  if (item.spi_score >= 0.8) return "expired_soon";
+  // Jika SPI sedang (di atas 0.4), berarti ada bahan mendekati kedaluwarsa
+  if (item.spi_score >= 0.4) return "approaching";
+  // Selain itu dianggap segar
   return "fresh";
 };
 
@@ -60,19 +67,22 @@ const STATUS_CONFIG: Record<
 function matchesRange(value: number, range: RangeOption | null): boolean {
   if (!range) return true;
   if (range === ">10") return value > 10;
-  if (range === "5-10") return value > 5 && value < 10;
+  if (range === "5-10") return value >= 5 && value <= 10;
   if (range === "<5") return value < 5;
   return true;
 }
 
+// FIX: Tambahkan parameter searchQuery agar tidak error (3 argumen)
 function applyFilter(
   recipes: RecommendationItem[],
   filter: FilterState,
+  searchQuery: string
 ): RecommendationItem[] {
   let result = recipes.filter((r) => {
+    const matchesSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSteps = matchesRange(r.total_steps, filter.stepsRange);
     const matchesIngredients = matchesRange(r.total_ingredients, filter.ingredientsRange);
-    return matchesSteps && matchesIngredients;
+    return matchesSearch && matchesSteps && matchesIngredients;
   });
 
   if (filter.sortBy === "fastest_steps") {
@@ -80,9 +90,8 @@ function applyFilter(
   } else if (filter.sortBy === "min_ingredients") {
     result = [...result].sort((a, b) => a.total_ingredients - b.total_ingredients);
   } else if (filter.sortBy === "most_popular") {
-    result = [...result].sort((a, b) => b.loves - a.loves);
+    result = [...result].sort((a, b) => (b.loves ?? 0) - (a.loves ?? 0));
   }
-  // Default: tetap urut sesuai final_score dari backend (sudah re-ranked oleh SPI)
   return result;
 }
 
@@ -108,7 +117,6 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
   const [meta, setMeta] = useState<{ latencyMs: number; spiWeight: number } | null>(null);
   const [isPopularMode, setIsPopularMode] = useState(false);
 
-  // Fetch resep populer acak sebagai fallback saat stok kosong
   const fetchPopularFallback = useCallback(async () => {
     try {
       const res = await api.get("/recipes/popular", { params: { limit: 10 } });
@@ -135,8 +143,6 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
       setIsPopularMode(true);
       setErrorMsg(null);
     } catch (fallbackErr) {
-      console.warn("[RecipeRecommendation] popular fallback error:", fallbackErr);
-      // Kalau fallback juga gagal, baru tampilkan empty state
       setRecipes([]);
       setIsPopularMode(false);
     }
@@ -145,15 +151,18 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
   const fetchRecommendations = useCallback(async () => {
     try {
       setErrorMsg(null);
+      // Tambahkan timestamp atau no-cache jika API terasa statis
       const res = await api.get<RecommendationResponse>("/recommend", {
-        params: { top_k: 20 },
+        params: { top_k: 20, _t: Date.now() },
       });
+      
+      console.log("[AI] SPI Weight received:", res.data.spi_weight);
+      
       setRecipes(res.data.recommendations || []);
       setMeta({ latencyMs: res.data.latency_ms, spiWeight: res.data.spi_weight });
       setIsPopularMode(false);
     } catch (err) {
       const msg = extractApiError(err);
-      console.warn("[RecipeRecommendation] fetch error:", msg);
       if (msg.toLowerCase().includes("inventaris kosong")) {
         setMeta(null);
         await fetchPopularFallback();
@@ -169,7 +178,6 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
   const pendingRecipeRef = useRef(route.params?.pendingRecipe);
   pendingRecipeRef.current = route.params?.pendingRecipe;
 
-  // Auto-refresh saat halaman dibuka + handle pendingRecipe dari Beranda
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
@@ -191,6 +199,7 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
     fetchRecommendations();
   };
 
+  // filteredRecipes sekarang menggunakan 3 argumen secara benar
   const filteredRecipes = applyFilter(recipes, activeFilter, search);
   const filterActive = isFilterActive(activeFilter);
 
@@ -211,7 +220,6 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
           photoUri={photoUri}
         />
 
-        {/* Title — opacity 0 saat first load supaya tidak flash judul yang salah */}
         <Text style={[styles.title, loading && recipes.length === 0 && { opacity: 0 }]}>
           {isPopularMode ? "Resep Populer" : "Rekomendasi Menu"}
         </Text>
@@ -225,22 +233,20 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
           <View style={styles.popularBanner}>
             <Ionicons name="trending-up" size={16} color="#D97706" />
             <Text style={styles.popularBannerText}>
-              Menampilkan resep terpopuler. Tambah bahan di Stok untuk rekomendasi AI.
+              Menampilkan resep populer. Tambah bahan di Stok untuk rekomendasi AI.
             </Text>
           </View>
         )}
 
-        {/* Meta info dari AI engine */}
-        {meta && !loading && recipes.length > 0 && (
+        {meta && !loading && recipes.length > 0 && !isPopularMode && (
           <View style={styles.metaBanner}>
             <Ionicons name="sparkles" size={12} color="#BB0009" />
             <Text style={styles.metaBannerText}>
-              {recipes.length} resep • {meta.latencyMs.toFixed(0)}ms • SPI weight {meta.spiWeight}
+              {recipes.length} resep • {meta.latencyMs.toFixed(0)}ms • SPI weight {meta.spiWeight.toFixed(2)}
             </Text>
           </View>
         )}
 
-        {/* Search Bar */}
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <Ionicons name="search-outline" size={18} color="#949FA2" style={styles.searchIcon} />
@@ -265,21 +271,16 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Active filter indicator */}
         {filterActive && (
           <View style={styles.filterBadgeRow}>
             <Ionicons name="funnel" size={13} color="#BB0009" />
             <Text style={styles.filterBadgeText}>Filter aktif</Text>
-            <TouchableOpacity
-              onPress={() => setActiveFilter(DEFAULT_FILTER)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
+            <TouchableOpacity onPress={() => setActiveFilter(DEFAULT_FILTER)}>
               <Text style={styles.filterBadgeClear}>Hapus</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Loading / Error / Empty / Cards */}
         {loading ? (
           <ActivityIndicator size="large" color="#BB0009" style={{ marginTop: 40 }} />
         ) : errorMsg ? (
@@ -298,6 +299,7 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
             const config = isPopularMode
               ? { label: "POPULER", badgeColor: "#D97706", borderColor: "#F59E0B", bgColor: "#FFFBEB" }
               : STATUS_CONFIG[status];
+              
             return (
               <TouchableOpacity
                 key={recipe.index}
@@ -308,24 +310,23 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
                 activeOpacity={0.75}
                 onPress={() => navigation.navigate("RecipeDetail", { recipe })}
               >
-                {/* Status Badge */}
                 <View style={[styles.statusBadge, { backgroundColor: config.badgeColor }]}>
                   <Text style={styles.statusBadgeText}>{config.label}</Text>
                 </View>
 
-                {/* Recipe Name (capitalized) */}
                 <Text style={styles.recipeName}>{capitalizeEachWord(recipe.title)}</Text>
 
-                {/* Description — context-aware */}
                 <Text style={styles.recipeDescription} numberOfLines={2}>
                   {isPopularMode
                     ? `${recipe.loves} orang menyukai resep ini.`
-                    : recipe.explanation || `${recipe.match_percentage.toFixed(0)}% bahan Anda cocok dengan resep ini.`
+                    : status === "fresh"
+                      ? `${recipe.match_percentage.toFixed(0)}% bahan Anda cocok. Menu sehat dan segar!`
+                      : recipe.explanation || `${recipe.match_percentage.toFixed(0)}% bahan cocok.`
                   }
                 </Text>
 
-                {/* Score breakdown — hanya tampil di mode AI, bukan popular */}
-                {!isPopularMode && (
+                {/* Score breakdown — Sembunyikan jika mode populer atau SPI 0 (segar sekali) */}
+                {!isPopularMode && recipe.spi_score > 0 && (
                   <View style={styles.scoreRow}>
                     <View style={styles.scorePill}>
                       <Text style={styles.scorePillLabel}>COSINE</Text>
@@ -344,7 +345,6 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
                   </View>
                 )}
 
-                {/* Meta Row */}
                 <View style={styles.metaRow}>
                   <View style={styles.metaItem}>
                     <Ionicons name="list-outline" size={14} color="#656C6E" />
@@ -369,7 +369,6 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={{ height: 24 }} />
       </ScrollView>
 
-      {/* Filter Modal */}
       <FilterModal
         visible={filterVisible}
         initialFilter={activeFilter}
@@ -381,218 +380,39 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
 };
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: "#FAFAFA",
-  },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === "ios" ? 60 : 40,
-    paddingBottom: 20,
-  },
-  title: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 26,
-    color: "#2B2B2B",
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: "#656C6E",
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  metaBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#FEF2F2",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 16,
-    alignSelf: "flex-start",
-  },
-  metaBannerText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: "#BB0009",
-    letterSpacing: 0.3,
-  },
-  popularBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#FFFBEB",
-    borderWidth: 1,
-    borderColor: "#FDE68A",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginBottom: 16,
-  },
-  popularBannerText: {
-    flex: 1,
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: "#92400E",
-    lineHeight: 17,
-  },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 12,
-  },
-  searchContainer: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#F0F0F0",
-    paddingHorizontal: 14,
-    height: 48,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: "#2B2B2B",
-    height: 48,
-  },
-  filterButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#F0F0F0",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterButtonActive: {
-    backgroundColor: "#BB0009",
-    borderColor: "#BB0009",
-  },
-  filterBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 14,
-  },
-  filterBadgeText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: "#BB0009",
-    flex: 1,
-  },
-  filterBadgeClear: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: "#BB0009",
-  },
-  recipeCard: {
-    borderRadius: 14,
-    borderLeftWidth: 4,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  statusBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 10,
-  },
-  statusBadgeText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: "#FFFFFF",
-    letterSpacing: 0.4,
-  },
-  recipeName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 18,
-    color: "#2B2B2B",
-    marginBottom: 4,
-  },
-  recipeDescription: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: "#656C6E",
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  scoreRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
-  },
-  scorePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.7)",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  scorePillFinal: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#FEE2E2",
-  },
-  scorePillLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    color: "#949FA2",
-    letterSpacing: 0.3,
-  },
-  scorePillValue: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: "#2B2B2B",
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  metaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  metaText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: "#656C6E",
-  },
-  metaDivider: {
-    width: 1,
-    height: 12,
-    backgroundColor: "#BFD3D6",
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 60,
-    gap: 12,
-  },
-  emptyText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: "#949FA2",
-    textAlign: "center",
-    paddingHorizontal: 24,
-  },
+  flex: { flex: 1, backgroundColor: "#FAFAFA" },
+  scrollContent: { paddingHorizontal: 24, paddingTop: Platform.OS === "ios" ? 60 : 40, paddingBottom: 20 },
+  title: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#2B2B2B", marginBottom: 6 },
+  subtitle: { fontFamily: "Inter_400Regular", fontSize: 14, color: "#656C6E", marginBottom: 28 },
+  popularBanner: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFBEB", padding: 12, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: "#FEF3C7" },
+  popularBannerText: { flex: 1, fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#B45309", marginLeft: 8 },
+  metaBanner: { flexDirection: "row", alignItems: "center", marginBottom: 16, backgroundColor: "#F3F4F6", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, alignSelf: "flex-start" },
+  metaBannerText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: "#6B7280", marginLeft: 6 },
+  searchRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
+  searchContainer: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 12, borderWidth: 1, borderColor: "#E8E8E8", paddingHorizontal: 12, height: 48 },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 15, color: "#2B2B2B" },
+  filterButton: { width: 48, height: 48, backgroundColor: "#FFFFFF", borderRadius: 12, borderWidth: 1, borderColor: "#E8E8E8", alignItems: "center", justifyContent: "center" },
+  filterButtonActive: { backgroundColor: "#BB0009", borderColor: "#BB0009" },
+  filterBadgeRow: { flexDirection: "row", alignItems: "center", marginBottom: 20, gap: 8 },
+  filterBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#BB0009" },
+  filterBadgeClear: { fontFamily: "Inter_700Bold", fontSize: 12, color: "#656C6E", textDecorationLine: "underline" },
+  recipeCard: { borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderLeftWidth: 6, borderColor: "#F0F0F0", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  statusBadge: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 12 },
+  statusBadgeText: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#FFFFFF" },
+  recipeName: { fontFamily: "Inter_700Bold", fontSize: 18, color: "#2B2B2B", marginBottom: 8 },
+  recipeDescription: { fontFamily: "Inter_400Regular", fontSize: 13, color: "#656C6E", lineHeight: 19, marginBottom: 16 },
+  scoreRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  scorePill: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.05)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 },
+  scorePillFinal: { backgroundColor: "rgba(187, 0, 9, 0.1)" },
+  scorePillLabel: { fontFamily: "Inter_700Bold", fontSize: 9, color: "#656C6E" },
+  scorePillValue: { fontFamily: "Inter_700Bold", fontSize: 11, color: "#2B2B2B" },
+  metaRow: { flexDirection: "row", alignItems: "center", paddingTop: 12, borderTopWidth: 1, borderTopColor: "rgba(0,0,0,0.05)" },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  metaText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#656C6E" },
+  metaDivider: { width: 1, height: 14, backgroundColor: "#E8E8E8", marginHorizontal: 12 },
+  emptyState: { alignItems: "center", marginTop: 60, gap: 12 },
+  emptyText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#949FA2", textAlign: "center" },
 });
 
 export default RecipeRecommendationScreen;
