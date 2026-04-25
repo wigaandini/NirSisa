@@ -73,15 +73,15 @@ const NotificationScreen: React.FC<Props> = ({ navigation }) => {
       .from("inventory_with_spi")
       .select("item_name, days_remaining, freshness_status")
       .eq("user_id", session.user.id)
-      .in("freshness_status", ["expired", "warning"]) // Ambil yang merah & kuning
+      .in("freshness_status", ["critical", "warning"])
       .order("days_remaining", { ascending: true });
 
     // 3. Gabungkan data (Buat notifikasi buatan dari stok yang ada)
     const dynamicNotifs: NotificationItem[] = (expiringInventory || []).map((item, index) => ({
       id: `dynamic-${index}`,
-      title: item.freshness_status === 'expired' ? "Sudah Kedaluwarsa!" : "Hampir Kedaluwarsa",
+      title: item.freshness_status === 'critical' ? "Segera Kedaluwarsa!" : "Mendekati Kedaluwarsa",
       body: `${item.item_name} sebaiknya segera diolah. Sisa waktu: ${item.days_remaining} hari.`,
-      notification_type: item.freshness_status === 'expired' ? 'critical' : 'warning',
+      notification_type: item.freshness_status === 'critical' ? 'critical' : 'warning',
       sent_at: new Date().toISOString()
     }));
 
