@@ -20,6 +20,19 @@ import Header from "../components/Header";
 
 const API_URL = "https://nirsisa-production.up.railway.app";
 
+// Body format: "Telur Ayam sebaiknya segera diolah. Sisa waktu: 2 hari."
+// Atau: "Wortel, Bayam (+1 lainnya) mendekati kedaluwarsa..."
+const extractIngredientFromNotif = (body: string): string => {
+  // Ambil teks sebelum kata "sebaiknya", "akan", "sudah", atau "mendekati"
+  const match = body.match(/^(.+?)\s+(sebaiknya|akan|sudah|mendekati)/i);
+  if (match) {
+    // Bersihkan: hapus emoji, trim
+    return match[1].replace(/[^\w\s]/gi, "").trim();
+  }
+  // Fallback: ambil kata pertama saja
+  return body.split(" ").slice(0, 2).join(" ").trim();
+};
+
 type Props = NativeStackScreenProps<RootStackParamList, "Notification">;
 
 interface NotificationItem {
@@ -152,8 +165,23 @@ const NotificationScreen: React.FC<Props> = ({ navigation }) => {
             {notifications.length > 0 ? (
               notifications.map((notif) => {
                 const style = getNotifStyle(notif.notification_type);
+                const ingredientName = extractIngredientFromNotif(notif.body);
+                const navigateWithSearch = () => {
+                  navigation.navigate("Main", {
+                    screen: "ChefAI",
+                    params: {
+                      screen: "RecipeRecommendation",
+                      params: { searchQuery: ingredientName },
+                    },
+                  });
+                };
                 return (
-                  <View key={notif.id} style={[styles.card, { borderLeftWidth: 4, borderLeftColor: style.color }]}>
+                  <TouchableOpacity
+                    key={notif.id}
+                    style={[styles.card, { borderLeftWidth: 4, borderLeftColor: style.color }]}
+                    activeOpacity={0.75}
+                    onPress={navigateWithSearch}
+                  >
                     <View style={styles.cardIconWrap}>
                       <View style={[styles.iconCircle, { backgroundColor: style.bg }]}>
                         <Ionicons name={style.icon} size={22} color={style.color} />
@@ -161,17 +189,17 @@ const NotificationScreen: React.FC<Props> = ({ navigation }) => {
                       <View style={styles.cardBody}>
                         <Text style={styles.cardTitle}>{notif.title}</Text>
                         <Text style={styles.cardDesc}>{notif.body}</Text>
-                        {notif.notification_type === 'critical' && (
-                          <TouchableOpacity 
+                        {(notif.notification_type === 'critical' || notif.notification_type === 'warning') && (
+                          <TouchableOpacity
                             style={[styles.primaryButton, { backgroundColor: style.color }]}
-                            onPress={() => navigation.navigate("Main", { screen: "ChefAI" })}
+                            onPress={navigateWithSearch}
                           >
                             <Text style={styles.primaryButtonText}>Cari Resep</Text>
                           </TouchableOpacity>
                         )}
                       </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             ) : (

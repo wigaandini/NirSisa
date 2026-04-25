@@ -25,7 +25,10 @@ import HistoryDetailScreen from "../screens/HistoryDetailScreen";
 import { RecommendationItem } from "../types/api";
 
 export type ChefAIStackParamList = {
-  RecipeRecommendation: { pendingRecipe?: RecommendationItem } | undefined;
+  RecipeRecommendation: {
+    pendingRecipe?: RecommendationItem;
+    searchQuery?: string;
+  } | undefined;
   RecipeDetail: { recipe: RecommendationItem };
 };
 
