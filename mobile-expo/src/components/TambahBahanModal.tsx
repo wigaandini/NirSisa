@@ -71,6 +71,7 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dateInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     const show = Keyboard.addListener(
@@ -266,8 +267,21 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
 
             <Text style={styles.fieldLabel}>TANGGAL KEDALUWARSA (OPSIONAL)</Text>
             <View style={styles.dateInputRow}>
-              <TextInput style={styles.dateInput} placeholder="dd/mm/yyyy" value={tanggal} onChangeText={handleTanggalChange} keyboardType="numeric" maxLength={10} />
-              <Ionicons name="calendar-outline" size={20} color="#656C6E" />
+              <TextInput
+                ref={dateInputRef}
+                style={styles.dateInput}
+                placeholder="dd/mm/yyyy"
+                value={tanggal}
+                onChangeText={handleTanggalChange}
+                keyboardType="numeric"
+                maxLength={10}
+              />
+              <TouchableOpacity
+                onPress={() => dateInputRef.current?.focus()}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="calendar-outline" size={20} color="#656C6E" />
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity style={[styles.saveButton, !nama && styles.saveButtonDisabled]} onPress={handleSave} disabled={!nama}>
