@@ -113,7 +113,7 @@ const StokScreen: React.FC = () => {
     if (!session?.user?.id) return;
 
     const channel = supabase
-      .channel('schema-db-changes')
+      .channel(`inventory-${session.user.id}-${Date.now()}`)
       .on(
         'postgres_changes',
         {
