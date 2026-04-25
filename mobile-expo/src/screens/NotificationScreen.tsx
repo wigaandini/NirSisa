@@ -52,8 +52,7 @@ const NotificationScreen: React.FC<Props> = ({ navigation }) => {
       .from("notification_log")
       .select("*")
       .eq("user_id", session.user.id)
-      .order("sent_at", { ascending: false })
-      .limit(5);
+      .order("sent_at", { ascending: false });
 
     // 2. SMART DETECTION: Cek stok yang kritis secara real-time
     // Ini adalah fallback jika tabel notification_log masih kosong
