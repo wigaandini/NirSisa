@@ -46,107 +46,40 @@ const HomeScreen: React.FC = () => {
   const [totalStock, setTotalStock] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchInitialData();
-    }, [])
-  );
-
   const fetchInitialData = async () => {
-    setLoading(true);
-
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      if (user) {
-        console.log("LOGGED IN USER ID:", user.id);
-      }
+      const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", user.id).single();
+      if (profile?.display_name) setUserName(profile.display_name);
 
-      if (!user) {
-        setRecipes([]);
-        setExpiringItems([]);
-        setTotalStock(0);
-        return;
-      }
+      const { count } = await supabase.from("inventory_stock").select("*", { count: "exact", head: true }).eq("user_id", user.id).gt("quantity", 0);
+      setTotalStock(count || 0);
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("display_name")
-        .eq("id", user.id)
-        .single();
-
-      if (profile?.display_name) {
-        setUserName(profile.display_name);
-      }
-
-      const { count } = await supabase
-        .from("inventory_stock")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .gt("quantity", 0);
-
-      const currentTotal = count || 0;
-      setTotalStock(currentTotal);
-
-      const { data: stock } = await supabase
-        .from("inventory_with_spi")
-        .select("*")
-        .eq("user_id", user.id)
-        .in("freshness_status", ["expired", "critical"])
-        .order("expiry_date", { ascending: true })
-        .limit(5);
-
+      const { data: stock } = await supabase.from("inventory_with_spi").select("*").eq("user_id", user.id).in("freshness_status", ["expired", "critical"]).order("expiry_date", { ascending: true }).limit(5);
       setExpiringItems(stock || []);
 
-      const { data: cookedHistory, error: cookedHistoryError } = await supabase
-        .from("consumption_history")
-        .select("recipe_title")
-        .eq("user_id", user.id);
+      const { data: cookedHistory } = await supabase.from("consumption_history").select("recipe_title").eq("user_id", user.id);
+      const cookedTitles = new Set((cookedHistory || []).map((item: any) => normalizeTitle(item.recipe_title || "")));
 
-      if (cookedHistoryError) {
-        console.warn("Gagal fetch consumption_history:", cookedHistoryError.message);
-      }
-
-      const cookedTitles = new Set(
-        (cookedHistory || [])
-          .map((item: { recipe_title: string | null }) => item.recipe_title)
-          .filter((title): title is string => Boolean(title))
-          .map((title) => normalizeTitle(title))
-      );
-
-      if (currentTotal > 0) {
+      if ((count || 0) > 0) {
         try {
-          const res = await api.get<RecommendationResponse>("/recommend", {
-            params: { top_k: 8 },
-          });
-
-          const recommendations = res.data.recommendations || [];
-
-          const filteredRecommendations = recommendations.filter(
-            (recipe) => !cookedTitles.has(normalizeTitle(recipe.title))
-          );
-
-          setRecipes(filteredRecommendations.slice(0, 2));
-        } catch (apiError) {
-          console.log("AI Recommendation log:", extractApiError(apiError));
-          setRecipes([]);
-        }
-      } else {
-        setRecipes([]);
-      }
-    } catch (error: any) {
-      console.error("Fatal Fetch Error:", error);
+          const res = await api.get<RecommendationResponse>("/recommend", { params: { top_k: 8 } });
+          const filtered = (res.data.recommendations || []).filter((r) => !cookedTitles.has(normalizeTitle(r.title)));
+          setRecipes(filtered.slice(0, 2));
+        } catch (e) { setRecipes([]); }
+      } else { setRecipes([]); }
+    } catch (error) {
+      console.error(error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
+
+  useEffect(() => { fetchInitialData(); }, []);
+  useFocusEffect(useCallback(() => { fetchInitialData(); }, []));
 
   const getBadgeInfo = (days: number) => {
     if (days <= 0) return { label: "EXPIRED", color: "#000000" };
@@ -157,19 +90,13 @@ const HomeScreen: React.FC = () => {
   };
 
   const getCardColors = (days: number) => {
-    if (days <= 0) {
-      return { backgroundColor: "#F5F5F5", borderColor: "#E5E7EB" };
-    }
-    if (days <= 2) {
-      return { backgroundColor: "#FEF2F2", borderColor: "#FEE2E2" };
-    }
-    if (days <= 5) {
-      return { backgroundColor: "#FFF8E1", borderColor: "#FDCB52" };
-    }
+    if (days <= 0) return { backgroundColor: "#F5F5F5", borderColor: "#E5E7EB" };
+    if (days <= 2) return { backgroundColor: "#FEF2F2", borderColor: "#FEE2E2" };
+    if (days <= 5) return { backgroundColor: "#FFF8E1", borderColor: "#FDCB52" };
     return { backgroundColor: "#DCFCE7", borderColor: "#15803D" };
   };
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
       <View style={[styles.flex, { justifyContent: "center" }]}>
         <ActivityIndicator size="large" color="#BB0009" />
@@ -183,16 +110,7 @@ const HomeScreen: React.FC = () => {
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              fetchInitialData();
-            }}
-            tintColor="#BB0009"
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchInitialData(); }} tintColor="#BB0009" />}
       >
         <Header
           onNotificationPress={() => navigation.navigate("Notification")}
@@ -200,11 +118,15 @@ const HomeScreen: React.FC = () => {
           photoUri={photoUri}
         />
 
+        {/* 1. GREETING */}
         <Text style={styles.greeting}>Halo, {userName.split(" ")[0]}!</Text>
         <Text style={styles.greetingSub}>
-          Kamu punya {expiringItems.length} bahan yang harus kamu perhatikan minggu ini.
+          {expiringItems.length > 0 
+            ? `Kamu punya ${expiringItems.length} bahan yang harus kamu perhatikan minggu ini.`
+            : "Semua bahanmu masih dalam kondisi aman."}
         </Text>
 
+        {/* 2. SECTION: EXPIRING (Dikecilkan judulnya, sejajar dengan tombol) */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Sudah & Segera Kedaluwarsa</Text>
           <TouchableOpacity onPress={() => navigation.navigate("Main", { screen: "Stok" })}>
@@ -212,46 +134,37 @@ const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {expiringItems.map((item) => {
-          const badge = getBadgeInfo(item.days_remaining);
-          const cardColors = getCardColors(item.days_remaining);
+        {expiringItems.length > 0 ? (
+          expiringItems.map((item) => {
+            const badge = getBadgeInfo(item.days_remaining);
+            const cardColors = getCardColors(item.days_remaining);
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.expiryCard, { backgroundColor: cardColors.backgroundColor, borderColor: cardColors.borderColor }]}
+                onPress={() => navigation.navigate("Main", { screen: "Stok" })}
+              >
+                <View style={[styles.expiryBadge, { backgroundColor: badge.color }]}>
+                  <Text style={styles.expiryBadgeText}>{badge.label}</Text>
+                </View>
+                <View style={styles.expiryInfo}>
+                  <Text style={styles.expiryName}>{capitalizeEachWord(item.item_name)}</Text>
+                  <Text style={styles.expiryQty}>{item.quantity} {item.unit}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        ) : (
+          <View style={styles.emptyCard}>
+            <Ionicons name="shield-checkmark-outline" size={24} color="#15803D" />
+            <Text style={styles.emptyText}>Tidak ada bahan kritis hari ini.</Text>
+          </View>
+        )}
 
-          return (
-            <TouchableOpacity
-              key={item.id}
-              style={[
-                styles.expiryCard,
-                {
-                  backgroundColor: cardColors.backgroundColor,
-                  borderColor: cardColors.borderColor,
-                },
-              ]}
-              onPress={() => navigation.navigate("Main", { screen: "Stok" })}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.expiryBadge, { backgroundColor: badge.color }]}>
-                <Text style={styles.expiryBadgeText}>{badge.label}</Text>
-              </View>
-              <View style={styles.expiryInfo}>
-                <Text style={styles.expiryName}>{capitalizeEachWord(item.item_name)}</Text>
-                <Text style={styles.expiryQty}>
-                  {item.quantity} {item.unit}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-
-        <View style={[styles.sectionHeader, { marginTop: 28 }]}>
+        {/* 3. SECTION: RECOMMENDATIONS (Sejajar) */}
+        <View style={[styles.sectionHeader, { marginTop: 32 }]}>
           <Text style={styles.sectionTitle}>Rekomendasi Chef AI</Text>
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate("Main", {
-                screen: "ChefAI",
-                params: { screen: "RecipeRecommendation" },
-              })
-            }
-          >
+          <TouchableOpacity onPress={() => navigation.navigate("Main", { screen: "ChefAI" })}>
             <Text style={styles.seeAll}>LIHAT SEMUA</Text>
           </TouchableOpacity>
         </View>
@@ -260,16 +173,7 @@ const HomeScreen: React.FC = () => {
           <TouchableOpacity
             key={recipe.index}
             style={styles.recipeCard}
-            onPress={() =>
-              navigation.navigate("Main", {
-                screen: "ChefAI",
-                params: {
-                  screen: "RecipeRecommendation",
-                  params: { pendingRecipe: recipe },
-                },
-              })
-            }
-            activeOpacity={0.85}
+            onPress={() => navigation.navigate("Main", { screen: "ChefAI", params: { screen: "RecipeRecommendation", params: { pendingRecipe: recipe } } })}
           >
             <Text style={styles.recipeTag}>REKOMENDASI UNTUKMU</Text>
             <Text style={styles.recipeName}>{capitalizeEachWord(recipe.title)}</Text>
@@ -282,16 +186,13 @@ const HomeScreen: React.FC = () => {
                 <Ionicons name="cube-outline" size={14} color="#656C6E" />
                 <Text style={styles.recipeMetaText}>{recipe.total_ingredients} Bahan</Text>
               </View>
-              <View style={styles.recipeMetaItem}>
-                <Ionicons name="heart" size={14} color="#BB0009" />
-                <Text style={styles.recipeMetaText}>{recipe.loves} Suka</Text>
-              </View>
             </View>
           </TouchableOpacity>
         ))}
 
+        {/* 4. STOCK BANNER (Di bagian paling bawah) */}
         <TouchableOpacity
-          style={styles.stockBanner}
+          style={[styles.stockBanner, { marginTop: 32 }]}
           onPress={() => navigation.navigate("Main", { screen: "Stok" })}
           activeOpacity={0.85}
         >
@@ -300,141 +201,54 @@ const HomeScreen: React.FC = () => {
           <Text style={styles.stockBannerLabel}>BAHAN AKTIF DI STOK</Text>
         </TouchableOpacity>
 
-        <View style={{ height: 24 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: "#FAFAFA",
+  flex: { flex: 1, backgroundColor: "#FAFAFA" },
+  scrollContent: { paddingHorizontal: 24, paddingTop: Platform.OS === "ios" ? 60 : 40, paddingBottom: 20 },
+  greeting: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#2B2B2B" },
+  greetingSub: { fontFamily: "Inter_400Regular", fontSize: 16, color: "#656C6E", marginTop: 4, marginBottom: 10, lineHeight: 22 },
+  sectionHeader: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "flex-end", // Sejajar di bagian bawah teks
+    marginTop: 24, 
+    marginBottom: 16 
   },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === "ios" ? 60 : 40,
-    paddingBottom: 20,
-  },
-  greeting: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 26,
+  sectionTitle: { 
+    fontFamily: "Inter_700Bold", 
+    fontSize: 15, // Dikecilkan dari 18 agar muat sejajar
     color: "#2B2B2B",
-    marginBottom: 4,
+    flex: 1 
   },
-  greetingSub: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: "#656C6E",
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 18,
-    color: "#2B2B2B",
-  },
-  seeAll: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: "#BB0009",
-    letterSpacing: 0.3,
-  },
-  expiryCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    marginBottom: 10,
-    borderWidth: 1,
-  },
-  expiryBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  expiryBadgeText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: "#FFFFFF",
-    letterSpacing: 0.3,
-  },
-  expiryInfo: {
-    flex: 1,
-    alignItems: "flex-end",
-  },
-  expiryName: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 15,
-    color: "#2B2B2B",
-  },
-  expiryQty: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: "#949FA2",
-    marginTop: 2,
-  },
-  recipeCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#F0F0F0",
-  },
-  recipeTag: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: "#BB0009",
-    letterSpacing: 0.3,
-    marginBottom: 6,
-  },
-  recipeName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 18,
-    color: "#2B2B2B",
-    marginBottom: 10,
-  },
-  recipeMeta: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  recipeMetaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  recipeMetaText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: "#656C6E",
-  },
-  stockBanner: {
-    backgroundColor: "#BB0009",
-    borderRadius: 18,
-    padding: 24,
-    marginTop: 20,
-  },
-  stockBannerNumber: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 48,
-    color: "#FFFFFF",
-    marginTop: 4,
-  },
-  stockBannerLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: "#FFFFFF",
+  seeAll: { 
+    fontFamily: "Inter_700Bold", 
+    fontSize: 11, 
+    color: "#BB0009", 
     letterSpacing: 0.5,
-    opacity: 0.9,
+    marginLeft: -10
   },
+  expiryCard: { flexDirection: "row", alignItems: "center", padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 12 },
+  expiryBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginRight: 12 },
+  expiryBadgeText: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#FFFFFF" },
+  expiryInfo: { flex: 1 },
+  expiryName: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#2B2B2B" },
+  expiryQty: { fontFamily: "Inter_400Regular", fontSize: 13, color: "#656C6E" },
+  recipeCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#F0F0F0" },
+  recipeTag: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#BB0009", marginBottom: 4 },
+  recipeName: { fontFamily: "Inter_700Bold", fontSize: 18, color: "#2B2B2B", marginBottom: 12 },
+  recipeMeta: { flexDirection: "row", gap: 16 },
+  recipeMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  recipeMetaText: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#656C6E" },
+  stockBanner: { backgroundColor: "#BB0009", borderRadius: 20, padding: 24, alignItems: "flex-start" },
+  stockBannerNumber: { fontFamily: "Inter_700Bold", fontSize: 48, color: "#FFFFFF", marginVertical: 8 },
+  stockBannerLabel: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#FFFFFF", letterSpacing: 1 },
+  emptyCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, backgroundColor: '#F0FDF4', borderRadius: 12, borderWidth: 1, borderColor: '#DCFCE7' },
+  emptyText: { fontFamily: 'Inter_400Regular', color: '#15803D', fontSize: 14 }
 });
 
 export default HomeScreen;

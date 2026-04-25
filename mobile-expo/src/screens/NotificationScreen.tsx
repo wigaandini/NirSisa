@@ -6,6 +6,7 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
+  TouchableOpacity, // <--- Tambahkan ini
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
