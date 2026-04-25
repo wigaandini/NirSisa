@@ -72,17 +72,14 @@ function matchesRange(value: number, range: RangeOption | null): boolean {
   return true;
 }
 
-// FIX: Tambahkan parameter searchQuery agar tidak error (3 argumen)
 function applyFilter(
   recipes: RecommendationItem[],
   filter: FilterState,
-  searchQuery: string
 ): RecommendationItem[] {
   let result = recipes.filter((r) => {
-    const matchesSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSteps = matchesRange(r.total_steps, filter.stepsRange);
     const matchesIngredients = matchesRange(r.total_ingredients, filter.ingredientsRange);
-    return matchesSearch && matchesSteps && matchesIngredients;
+    return matchesSteps && matchesIngredients;
   });
 
   if (filter.sortBy === "fastest_steps") {
@@ -116,6 +113,19 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ latencyMs: number; spiWeight: number } | null>(null);
   const [isPopularMode, setIsPopularMode] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeSearchRef = useRef<string>(""); // track search yang sedang aktif di backend
+
+  useEffect(() => {
+    const incoming = route.params?.searchQuery;
+    if (incoming && incoming.trim()) {
+      setSearch(incoming.trim());
+      // Trigger server-side search
+      activeSearchRef.current = incoming.trim();
+      setLoading(true);
+      fetchRecommendations(incoming.trim());
+    }
+  }, [route.params?.searchQuery]);
 
   const fetchPopularFallback = useCallback(async () => {
     try {
@@ -148,13 +158,15 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   }, []);
 
-  const fetchRecommendations = useCallback(async () => {
+  const fetchRecommendations = useCallback(async (searchQuery?: string) => {
     try {
       setErrorMsg(null);
-      // Tambahkan timestamp atau no-cache jika API terasa statis
-      const res = await api.get<RecommendationResponse>("/recommend", {
-        params: { top_k: 20, _t: Date.now() },
-      });
+      const params: Record<string, any> = { top_k: 20, _t: Date.now() };
+      // Kirim search ke backend agar search ke SELURUH DB, bukan 20 resep lokal
+      if (searchQuery && searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
+      const res = await api.get<RecommendationResponse>("/recommend", { params });
       
       console.log("[AI] SPI Weight received:", res.data.spi_weight);
       
@@ -180,8 +192,12 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      fetchRecommendations();
+      // Jangan fetch ulang jika searchQuery dari route params sedang di-proses
+      // (useEffect di atas sudah handle itu)
+      if (!route.params?.searchQuery) {
+        setLoading(true);
+        fetchRecommendations(activeSearchRef.current || undefined);
+      }
 
       const pending = pendingRecipeRef.current;
       if (!pending) return;
@@ -196,11 +212,34 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchRecommendations();
+    fetchRecommendations(activeSearchRef.current || undefined);
   };
 
-  // filteredRecipes sekarang menggunakan 3 argumen secara benar
-  const filteredRecipes = applyFilter(recipes, activeFilter, search);
+  const handleSearchChange = (text: string) => {
+    setSearch(text);
+
+    // Clear pending timer
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+
+    // Debounce 500ms: kalau user berhenti ketik, baru fetch dari backend
+    searchTimerRef.current = setTimeout(() => {
+      activeSearchRef.current = text.trim();
+      setLoading(true);
+      fetchRecommendations(text.trim() || undefined);
+    }, 500);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, []);
+
+  // Filter hanya untuk steps/ingredients/sort — search sudah server-side
+  const filteredRecipes = applyFilter(recipes, activeFilter);
   const filterActive = isFilterActive(activeFilter);
 
   return (
@@ -252,11 +291,17 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
             <Ionicons name="search-outline" size={18} color="#949FA2" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Cari menu..."
+              placeholder="Cari menu atau bahan..."
               placeholderTextColor="#BFD3D6"
               value={search}
-              onChangeText={setSearch}
+              onChangeText={handleSearchChange}
               returnKeyType="search"
+              onSubmitEditing={() => {
+                if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+                activeSearchRef.current = search.trim();
+                setLoading(true);
+                fetchRecommendations(search.trim() || undefined);
+              }}
             />
           </View>
           <TouchableOpacity

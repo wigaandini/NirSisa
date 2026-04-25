@@ -82,9 +82,10 @@ def get_recommendations(
     inventory: list[InventoryItem],
     *,
     top_k: int = 10,
-    spi_weight: float | None = None, # Ubah default jadi None
+    spi_weight: float | None = None,
     alpha: float = 2.0,
     cosine_threshold: float = 0.0,
+    search_query: str | None = None,
 ) -> RecommendationResult:
     t_start = time.perf_counter()
 
@@ -100,8 +101,19 @@ def get_recommendations(
     cos_scores = kb.compute_cosine_scores(user_text)
 
     # Step 2: SPI Scores & Calculate Dynamic Weight
-    spi_scores = np.zeros(n_recipes, dtype=float)
-    max_inventory_urgency = 0.0 # Penampung tingkat krisis bahan
+    # ═══════════════════════════════════════════════════════════════════════
+    # Ada DUA jenis SPI score:
+    #   1. spi_ranking  → untuk final_score (ranking). Dinormalisasi agar
+    #                      seimbang dengan cosine_score [0..1].
+    #   2. spi_display  → untuk ditampilkan di UI. RATA-RATA urgensi bahan
+    #                      yang cocok, TANPA normalisasi. Langsung bermakna:
+    #                      - 100% = bahan expired hari ini
+    #                      - 25%  = bahan expired besok
+    #                      - 0.2% = bahan masih 21 hari lagi
+    # ═══════════════════════════════════════════════════════════════════════
+    spi_scores_raw = np.zeros(n_recipes, dtype=float)    # sum of urgencies (for ranking)
+    spi_match_counts = np.zeros(n_recipes, dtype=float)  # count of matched urgent ingredients
+    max_inventory_urgency = 0.0
 
     expiry_map: dict[str, int] = {}
     for item in inventory:
@@ -111,16 +123,28 @@ def get_recommendations(
     for ingredient_name, days_rem in expiry_map.items():
         urgency = calculate_spi(days_rem, alpha=alpha)
         
-        # Cari urgensi tertinggi dari semua bahan user
         if urgency > max_inventory_urgency:
             max_inventory_urgency = urgency
             
         mask = kb.recipe_contains_ingredient(ingredient_name)
-        spi_scores[mask] += urgency
+        spi_scores_raw[mask] += urgency
+        spi_match_counts[mask] += 1
 
-    # Normalisasi SPI Score (per resep)
-    spi_max = spi_scores.max()
-    spi_scores_norm = spi_scores / spi_max if spi_max > 0 else spi_scores
+    # --- SPI untuk DISPLAY (rata-rata urgensi bahan yang cocok) ---
+    # Langsung bermakna: "seberapa urgent bahan-bahan di resep ini?"
+    # Tidak perlu normalisasi karena calculate_spi() sudah return [0..1]
+    spi_display = np.where(
+        spi_match_counts > 0,
+        spi_scores_raw / spi_match_counts,  # rata-rata
+        0.0
+    )
+
+    # --- SPI untuk RANKING (normalisasi agar seimbang dengan cosine) ---
+    total_urgency = sum(calculate_spi(d, alpha=alpha) for d in expiry_map.values())
+    if total_urgency > 0:
+        spi_ranking = np.minimum(spi_scores_raw / total_urgency, 1.0)
+    else:
+        spi_ranking = spi_scores_raw
 
     # --- LOGIKA DINAMIS SPI WEIGHT ---
     # Jika tidak ditentukan manual, hitung otomatis berdasarkan bahan paling kritis
@@ -135,10 +159,34 @@ def get_recommendations(
 
     # Step 3: Final Score menggunakan dynamic_weight
     cosine_weight = 1.0 - dynamic_weight
-    final_scores = (cos_scores * cosine_weight) + (spi_scores_norm * dynamic_weight)
+    final_scores = (cos_scores * cosine_weight) + (spi_ranking * dynamic_weight)
 
-    # Step 4: Filter & Top-K (Tetap sama)
+    # Step 4: Filter & Top-K
     candidate_indices = np.arange(n_recipes)
+
+    # Search dilakukan di SELURUH database resep SEBELUM Top-K,
+    # bukan filter lokal dari 20 hasil awal.
+    if search_query and search_query.strip():
+        query_lower = search_query.strip().lower()
+        query_tokens = query_lower.split()
+
+        # Match jika SEMUA token muncul di title ATAU ingredients
+        mask = np.ones(n_recipes, dtype=bool)
+        for token in query_tokens:
+            token_match = np.array([
+                (token in str(row.get("Title", "")).lower() or
+                 token in str(row.get("Ingredients", "")).lower() or
+                 token in str(row.get("Ingredients Cleaned", "")).lower())
+                for _, row in kb.df_recipes.iterrows()
+            ])
+            mask &= token_match
+
+        candidate_indices = np.where(mask)[0]
+        logger.info(
+            "Search filter '%s': %d/%d resep cocok",
+            search_query, len(candidate_indices), n_recipes
+        )
+
     sorted_candidates = candidate_indices[final_scores[candidate_indices].argsort()[::-1]]
     top_indices = sorted_candidates[:top_k]
 
@@ -168,7 +216,7 @@ def get_recommendations(
                 total_steps=int(row.get("Total Steps", 0)),
                 quantity=str(row.get("Quantity", "")),
                 cosine_score=round(float(cos_scores[idx]), 6),
-                spi_score=round(float(spi_scores_norm[idx]), 6),
+                spi_score=round(float(spi_display[idx]), 6),  # rata-rata urgensi (bermakna)
                 final_score=round(float(final_scores[idx]), 6),
                 match_percentage=round(match_pct, 1),
             )

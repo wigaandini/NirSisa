@@ -43,6 +43,7 @@ def _build_explanation(item: dict) -> str:
 async def recommend(
     user_id: str = Depends(get_current_user_id),
     top_k: int = Query(default=None, ge=1, le=50, description="Jumlah rekomendasi"),
+    search: str | None = Query(default=None, description="Cari resep berdasarkan nama menu atau nama bahan"),
 ):
     settings = get_settings()
     k = top_k or settings.TOP_K_RECOMMENDATIONS
@@ -68,6 +69,7 @@ async def recommend(
             spi_weight=settings.SPI_WEIGHT,
             alpha=settings.SPI_DECAY_FACTOR,
             cosine_threshold=0.0,
+            search_query=search,
         )
     except RuntimeError as e:
         logger.error("AI engine error: %s", e)
