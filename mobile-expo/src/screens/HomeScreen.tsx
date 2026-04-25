@@ -82,7 +82,7 @@ const HomeScreen: React.FC = () => {
   useFocusEffect(useCallback(() => { fetchInitialData(); }, []));
 
   const getBadgeInfo = (days: number) => {
-    if (days <= 0) return { label: "EXPIRED", color: "#000000" };
+    if (days <= 0) return { label: "KEDALUWARSA", color: "#000000" };
     if (days === 1) return { label: "BESOK", color: "#BB0009" };
     if (days <= 2) return { label: `${days} HARI LAGI`, color: "#BB0009" };
     if (days <= 5) return { label: `${days} HARI LAGI`, color: "#FDCB52" };

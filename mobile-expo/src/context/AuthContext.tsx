@@ -7,7 +7,7 @@ import * as SecureStore from "expo-secure-store";
 // ============================================================================
 // KONFIGURASI SESSION TIMEOUT
 // ============================================================================
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 menit idle → auto-logout
+const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 60 menit idle → auto-logout
 
 // Hard session limit: maksimal berapa lama user bisa stay logged in
 // sejak login, REGARDLESS of activity. Pengganti Supabase Pro "time-box".
@@ -206,7 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         console.log("[AuthContext] Inactivity timeout → auto-logout");
         Alert.alert(
           "Sesi Berakhir",
-          "Anda telah tidak aktif selama 30 menit. Silakan login kembali untuk keamanan.",
+          "Anda telah tidak aktif selama 60 menit. Silakan login kembali untuk keamanan.",
           [{ text: "OK" }]
         );
         await signOut();

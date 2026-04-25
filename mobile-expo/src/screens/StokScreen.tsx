@@ -232,7 +232,7 @@ const StokScreen: React.FC = () => {
 
   const getStatusDisplay = (_status: string, days: number) => {
     if (days <= 0) {
-      return { label: "EXPIRED", color: "#000000" };
+      return { label: "KEDALUWARSA", color: "#000000" };
     }
 
     if (days === 1) {
@@ -348,14 +348,14 @@ const StokScreen: React.FC = () => {
             <Text style={styles.summaryUnit}> item</Text>
           </View>
           <View style={[styles.summaryCard, styles.summaryExpiring]}>
-            <Text style={[styles.summaryLabel, { flex: 1 }]}>{"SEGERA\nKEDALUWARSA"}</Text>
+            <Text style={[styles.summaryLabel, { flex: 1 }]}>{"1-2 HARI LAGI\nKEDALUWARSA"}</Text>
             <Text style={styles.summaryNumber}>
               {inventory.filter((i) => i.freshness_status === "critical").length}
             </Text>
             <Text style={styles.summaryUnit}> item</Text>
           </View>
           <View style={[styles.summaryCard, styles.summaryWarning]}>
-            <Text style={[styles.summaryLabel, { flex: 1, color: "#B45309" }]}>{"MENDEKATI\nKEDALUWARSA"}</Text>
+            <Text style={[styles.summaryLabel, { flex: 1, color: "#B45309" }]}>{"3-5 HARI LAGI\nKEDALUWARSA"}</Text>
             <Text style={[styles.summaryNumber, { color: "#B45309" }]}>
               {inventory.filter((i) => i.freshness_status === "warning").length}
             </Text>

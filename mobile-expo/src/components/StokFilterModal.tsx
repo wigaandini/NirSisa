@@ -62,8 +62,8 @@ const KATEGORI_OPTIONS: { label: string; value: KategoriValue }[] = [
 
 const STATUS_OPTIONS: { label: string; value: StatusStok }[] = [
   { label: "Sudah Kedaluwarsa", value: "expired" },
-  { label: "Segera Kedaluwarsa", value: "critical" },
-  { label: "Mendekati Kedaluwarsa", value: "warning" },
+  { label: "1-2 Hari Lagi", value: "critical" },
+  { label: "3-5 Hari Lagi", value: "warning" },
   { label: "Segar", value: "fresh" },
 ];
 
