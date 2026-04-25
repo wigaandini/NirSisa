@@ -32,12 +32,13 @@ type DerivedStatus = "expired_soon" | "approaching" | "fresh";
  * Kita naikkan threshold agar bahan segar tidak langsung jadi merah.
  */
 const deriveStatus = (item: RecommendationItem): DerivedStatus => {
-  // Jika SPI sangat tinggi (di atas 0.8), berarti ada bahan yang kritis/kedaluwarsa
-  if (item.spi_score >= 0.8) return "expired_soon";
-  // Jika SPI sedang (di atas 0.4), berarti ada bahan mendekati kedaluwarsa
-  if (item.spi_score >= 0.4) return "approaching";
-  // Selain itu dianggap segar
-  return "fresh";
+  // ▼▼▼ Threshold disesuaikan dengan SPI rata-rata urgensi ▼▼▼
+  // SPI = 1/(d+1)² dimana d = sisa hari
+  //   d=0 → 100%  |  d=1 → 25%  |  d=2 → 11%  |  d=5 → 3%  |  d=7+ → <2%
+  if (item.spi_score >= 0.10) return "expired_soon";  // ≤ 2 hari (merah)
+  if (item.spi_score >= 0.02) return "approaching";   // 3-5 hari (kuning)
+  return "fresh";                                      // > 5 hari (hijau)
+  // ▲▲▲
 };
 
 const STATUS_CONFIG: Record<
@@ -72,6 +73,8 @@ function matchesRange(value: number, range: RangeOption | null): boolean {
   return true;
 }
 
+// ▼▼▼ FIX BUG 1: applyFilter sekarang HANYA untuk filter (steps/ingredients/sort).
+// Search sudah di-handle server-side via param `search` ke backend.
 function applyFilter(
   recipes: RecommendationItem[],
   filter: FilterState,
@@ -91,6 +94,7 @@ function applyFilter(
   }
   return result;
 }
+// ▲▲▲
 
 function isFilterActive(filter: FilterState): boolean {
   return (
@@ -113,9 +117,12 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ latencyMs: number; spiWeight: number } | null>(null);
   const [isPopularMode, setIsPopularMode] = useState(false);
+  // ▼▼▼ FIX BUG 1 & 3: debounce timer + track active search for server-side query ▼▼▼
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSearchRef = useRef<string>(""); // track search yang sedang aktif di backend
+  // ▲▲▲
 
+  // ▼▼▼ FIX BUG 3: baca searchQuery dari route params (dari NotificationScreen) ▼▼▼
   useEffect(() => {
     const incoming = route.params?.searchQuery;
     if (incoming && incoming.trim()) {
@@ -126,6 +133,7 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
       fetchRecommendations(incoming.trim());
     }
   }, [route.params?.searchQuery]);
+  // ▲▲▲
 
   const fetchPopularFallback = useCallback(async () => {
     try {
@@ -158,6 +166,7 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   }, []);
 
+  // ▼▼▼ FIX BUG 1 & 2: search di-kirim ke backend, bukan filter lokal ▼▼▼
   const fetchRecommendations = useCallback(async (searchQuery?: string) => {
     try {
       setErrorMsg(null);
@@ -215,6 +224,7 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
     fetchRecommendations(activeSearchRef.current || undefined);
   };
 
+  // ▼▼▼ FIX BUG 1 & 2: debounced server-side search ▼▼▼
   const handleSearchChange = (text: string) => {
     setSearch(text);
 
@@ -237,6 +247,7 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
   }, []);
+  // ▲▲▲
 
   // Filter hanya untuk steps/ingredients/sort — search sudah server-side
   const filteredRecipes = applyFilter(recipes, activeFilter);
@@ -296,12 +307,14 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
               value={search}
               onChangeText={handleSearchChange}
               returnKeyType="search"
+              // ▼▼▼ FIX: submit search saat user tekan Enter di keyboard ▼▼▼
               onSubmitEditing={() => {
                 if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
                 activeSearchRef.current = search.trim();
                 setLoading(true);
                 fetchRecommendations(search.trim() || undefined);
               }}
+              // ▲▲▲
             />
           </View>
           <TouchableOpacity
