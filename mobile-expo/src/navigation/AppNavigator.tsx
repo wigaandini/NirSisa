@@ -25,7 +25,7 @@ import HistoryDetailScreen from "../screens/HistoryDetailScreen";
 import { RecommendationItem } from "../types/api";
 
 export type ChefAIStackParamList = {
-  RecipeRecommendation: undefined;
+  RecipeRecommendation: { pendingRecipe?: RecommendationItem } | undefined;
   RecipeDetail: { recipe: RecommendationItem };
 };
 
@@ -120,6 +120,12 @@ const MainTabs: React.FC = () => {
           tabBarIcon:  () => null,
           tabBarButton: (props) => <ChefAIFloatingButton {...props} />,
         }}
+        listeners={({ navigation: tabNav }) => ({
+          tabPress: (e) => {
+            e.preventDefault();
+            tabNav.navigate("ChefAI", { screen: "RecipeRecommendation" });
+          },
+        })}
       />
       <Tab.Screen name="Riwayat" component={RiwayatScreen} options={{ tabBarLabel: "RIWAYAT" }} />
       <Tab.Screen name="Profil"  component={ProfilScreen}  options={{ tabBarLabel: "PROFIL" }} />
@@ -188,14 +194,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Wrapper diperluas ke atas agar circle yang float masih bisa di-tap
+  // Wrapper diperluas ke atas agar circle yang float masih bisa di-tap.
+  // Tidak pakai justifyContent/paddingBottom karena di Android negative marginTop
+  // menggeser semua flex children — label pakai position absolute supaya selalu
+  // menempel di bawah, tidak ikut naik.
   chefAIWrapper: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "flex-end",
-    paddingBottom: 8,
-    marginTop: -16,
-    paddingTop: 16,
+    marginTop: -26,
+    paddingTop: 26,
   },
 
   chefAICircle: {
@@ -214,6 +221,8 @@ const styles = StyleSheet.create({
   },
 
   chefAILabel: {
+    position: "absolute",
+    bottom: Platform.OS === "android" ? 9 : 8,
     fontFamily: "Inter_600SemiBold",
     fontSize: 11,
     letterSpacing: 0.55,

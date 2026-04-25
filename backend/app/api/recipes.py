@@ -1,5 +1,6 @@
 # Cari resep dari DB
 
+import random
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.auth import get_current_user_id
@@ -17,7 +18,7 @@ async def list_recipes(
     offset: int = Query(default=0, ge=0),
     _: str = Depends(get_current_user_id),
 ):
-    # Daftar resep dengan filter kategori dan pencarian judul 
+    # Daftar resep dengan filter kategori dan pencarian judul
     sb = get_supabase()
     query = (
         sb.table("recipes")
@@ -43,12 +44,47 @@ async def list_recipes(
     return recipes
 
 
+@router.get("/popular", response_model=list[RecipeResponse])
+async def popular_recipes(
+    limit: int = Query(default=10, ge=1, le=50),
+    _: str = Depends(get_current_user_id),
+):
+    """
+    Ambil resep populer secara acak. Dipakai sebagai fallback di halaman
+    Rekomendasi Menu ketika user belum punya stok bahan.
+
+    Strategi: ambil top 100 resep berdasarkan loves, lalu shuffle dan
+    return `limit` item. Ini memberikan variasi setiap kali halaman dibuka
+    tanpa menampilkan resep yang sama terus.
+    """
+    sb = get_supabase()
+
+    result = (
+        sb.table("recipes")
+        .select("*, recipe_categories(name)")
+        .order("loves", desc=True)
+        .range(0, 99)  # top 100 terpopuler
+        .execute()
+    )
+
+    recipes = []
+    for row in (result.data or []):
+        cat = row.pop("recipe_categories", None)
+        row["category_name"] = cat["name"] if cat else None
+        recipes.append(row)
+
+    # Shuffle untuk variasi
+    random.shuffle(recipes)
+
+    return recipes[:limit]
+
+
 @router.get("/{recipe_id}", response_model=RecipeResponse)
 async def get_recipe(
     recipe_id: int,
     _: str = Depends(get_current_user_id),
 ):
-    # Ambil detail satu resep berdasarkan ID 
+    # Ambil detail satu resep berdasarkan ID
     sb = get_supabase()
     result = (
         sb.table("recipes")

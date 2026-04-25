@@ -53,11 +53,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // ─── CORE AUTH SETUP ────────────────────────────────────────────────────
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.warn("[AuthContext] getSession error (stale token?):", error.message);
+        // Session rusak — bersihkan dan arahkan ke login
+        supabase.auth.signOut().catch(() => {});
+        setSession(null);
+        setLoading(false);
+        return;
+      }
       setSession(session);
       if (session?.user) {
         loadAvatarFromDB(session.user.id);
       }
+      setLoading(false);
+    }).catch((err) => {
+      // Catch unexpected errors (network, dll)
+      console.warn("[AuthContext] Unexpected getSession error:", err);
+      setSession(null);
       setLoading(false);
     });
 

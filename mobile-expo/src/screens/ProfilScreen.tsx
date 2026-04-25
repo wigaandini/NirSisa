@@ -26,8 +26,7 @@ import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
 import { unregisterPushToken } from "../services/notifications";
 import * as ImagePicker from "expo-image-picker";
-
-const LOGO_IMAGE = require("../assets/images/logo.png");
+import Header from "../components/Header";
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
 
@@ -48,10 +47,12 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { session } = useAuth(); // Tambahkan ini di dalam ChangePasswordModal jika belum ada
 
   const handleSavePassword = async () => {
-    if (!newPassword || !confirmPassword) {
-      Alert.alert("Error", "Kata sandi baru harus diisi");
+  // 1. Validasi Input Dasar
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      Alert.alert("Error", "Semua field harus diisi");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -62,14 +63,38 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, onCl
       Alert.alert("Error", "Kata sandi minimal 6 karakter");
       return;
     }
+
     setSaving(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setSaving(false);
-    if (error) {
-      Alert.alert("Gagal", error.message);
-    } else {
-      Alert.alert("Berhasil", "Kata sandi berhasil diperbarui");
-      handleClose();
+
+    try {
+      // 2. VERIFIKASI KATA SANDI LAMA (Re-authentication)
+      // Kita mencoba login menggunakan email user saat ini dan password lama yang diinput
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: session?.user?.email!,
+        password: oldPassword,
+      });
+
+      if (loginError) {
+        setSaving(false);
+        Alert.alert("Gagal", "Kata sandi lama yang Anda masukkan salah.");
+        return;
+      }
+
+      // 3. JIKA PASS LAMA BENAR, UPDATE KE KATA SANDI BARU
+      const { error: updateError } = await supabase.auth.updateUser({ 
+        password: newPassword 
+      });
+
+      if (updateError) {
+        Alert.alert("Gagal", updateError.message);
+      } else {
+        Alert.alert("Berhasil", "Kata sandi berhasil diperbarui");
+        handleClose();
+      }
+    } catch (err: any) {
+      Alert.alert("Error", "Terjadi kesalahan sistem");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -632,27 +657,10 @@ const ProfilScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              style={styles.notifButton}
-              onPress={() => navigation.navigate("Notification")}
-            >
-              <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
-            </TouchableOpacity>
-            <TouchableOpacity activeOpacity={1} style={styles.avatar}>
-              {localPhotoUri && !photoLoadError
-                ? <Image
-                    source={{ uri: localPhotoUri }}
-                    style={{ width: 40, height: 40, borderRadius: 20 }}
-                    onError={() => setPhotoLoadError(true)}
-                  />
-                : <Ionicons name="person" size={20} color="#FFFFFF" />}
-            </TouchableOpacity>
-          </View>
-        </View>
+        <Header
+          onNotificationPress={() => navigation.navigate("Notification")}
+          photoUri={localPhotoUri && !photoLoadError ? localPhotoUri : null}
+        />
 
         {/* Avatar Section */}
         <View style={styles.avatarSection}>
@@ -783,33 +791,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: Platform.OS === "ios" ? 60 : 40,
     paddingBottom: 20,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 28,
-  },
-  logoSmall: {
-    width: 56,
-    height: 32,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  notifButton: {
-    padding: 4,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#36393B",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
   },
   avatarSection: {
     alignItems: "center",

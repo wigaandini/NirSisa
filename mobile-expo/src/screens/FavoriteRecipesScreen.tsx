@@ -1,15 +1,14 @@
 import React, { useEffect, useState, useCallback } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, 
-  Image, ActivityIndicator, Platform, RefreshControl
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  ActivityIndicator, Platform, RefreshControl
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
 import { capitalizeEachWord } from "../utils/formatters";
-import { useFocusEffect } from "@react-navigation/native"; // Tambah import ini
-
-const LOGO_IMAGE = require("../assets/images/logo.png");
+import { useFocusEffect } from "@react-navigation/native";
+import Header from "../components/Header";
 
 const FavoriteRecipesScreen = ({ navigation }: any) => {
   const { session } = useAuth();
@@ -61,13 +60,7 @@ const FavoriteRecipesScreen = ({ navigation }: any) => {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={24} color="#2B2B2B" />
-          </TouchableOpacity>
-          <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <View style={{ width: 40 }} />
-        </View>
+        <Header variant="back" onBack={() => navigation.goBack()} />
 
         <Text style={styles.title}>Resep Favorit</Text>
 
@@ -109,9 +102,6 @@ const FavoriteRecipesScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: "#FAFAFA" },
   scrollContent: { paddingHorizontal: 24, paddingTop: Platform.OS === "ios" ? 60 : 40, paddingBottom: 40 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F0F0F0', justifyContent: 'center', alignItems: 'center' },
-  logoSmall: { width: 56, height: 32 },
   title: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#2B2B2B", marginBottom: 24 },
   recipeCard: { 
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', 

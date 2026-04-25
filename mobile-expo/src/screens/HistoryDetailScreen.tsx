@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   Platform,
   Alert,
@@ -15,8 +14,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
 import { capitalizeEachWord } from "../utils/formatters";
-
-const LOGO_IMAGE = require("../assets/images/logo.png");
+import Header from "../components/Header";
 
 type Props = NativeStackScreenProps<RootStackParamList, "HistoryDetail">;
 
@@ -97,13 +95,7 @@ const HistoryDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   return (
     <View style={styles.flex}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={24} color="#2B2B2B" />
-          </TouchableOpacity>
-          <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <View style={{ width: 40 }} />
-        </View>
+        <Header variant="back" onBack={() => navigation.goBack()} />
 
         <View style={styles.content}>
           <Text style={styles.dateLabel}>{formatDate(detail.cooked_at)}</Text>
@@ -149,9 +141,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: "#FAFAFA" },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingTop: Platform.OS === "ios" ? 60 : 40, paddingBottom: 40 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, marginBottom: 24 },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F0F0F0', justifyContent: 'center', alignItems: 'center' },
-  logoSmall: { width: 56, height: 32 },
   content: { paddingHorizontal: 24 },
   dateLabel: { fontFamily: 'Inter_700Bold', fontSize: 12, color: '#BB0009', marginBottom: 8 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 26, color: '#2B2B2B', marginBottom: 12 },

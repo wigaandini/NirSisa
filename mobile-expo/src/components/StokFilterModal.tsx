@@ -29,7 +29,7 @@ export type KategoriValue =
   | "dairy"
   | "Lain-lain";
 
-export type StatusStok = "expired" | "warning" | "fresh";
+export type StatusStok = "expired" | "critical" | "warning" | "fresh";
 
 export interface StokFilter {
   sortBy: SortStok | null;
@@ -45,7 +45,7 @@ export const DEFAULT_STOK_FILTER: StokFilter = {
 };
 
 const SORT_OPTIONS: { value: SortStok; label: string }[] = [
-  { value: "expiry", label: "Tanggal Kadaluwarsa (Terdekat)" },
+  { value: "expiry", label: "Tanggal Kedaluwarsa (Terdekat)" },
   { value: "name_az", label: "Nama (A-Z)" },
   { value: "quantity", label: "Jumlah (Tersisa)" },
 ];
@@ -61,8 +61,9 @@ const KATEGORI_OPTIONS: { label: string; value: KategoriValue }[] = [
 ];
 
 const STATUS_OPTIONS: { label: string; value: StatusStok }[] = [
-  { label: "Segera Kadaluwarsa", value: "expired" },
-  { label: "Mendekati Kadaluwarsa", value: "warning" },
+  { label: "Sudah Kedaluwarsa", value: "expired" },
+  { label: "Segera Kedaluwarsa", value: "critical" },
+  { label: "Mendekati Kedaluwarsa", value: "warning" },
   { label: "Segar", value: "fresh" },
 ];
 

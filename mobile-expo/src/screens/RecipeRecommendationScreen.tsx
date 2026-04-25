@@ -1,15 +1,15 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   TextInput,
   Platform,
   ActivityIndicator,
   RefreshControl,
+  InteractionManager,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -17,20 +17,14 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ChefAIStackParamList, RootStackParamList } from "../navigation/AppNavigator";
 import FilterModal, { DEFAULT_FILTER, FilterState, RangeOption } from "../components/FilterModal";
+import Header from "../components/Header";
 import { api, extractApiError } from "../services/api";
 import { RecommendationItem, RecommendationResponse } from "../types/api";
 import { capitalizeEachWord } from "../utils/formatters";
-
-const LOGO_IMAGE = require("../assets/images/logo.png");
+import { useAuth } from "../context/AuthContext";
 
 type Props = NativeStackScreenProps<ChefAIStackParamList, "RecipeRecommendation">;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STATUS DERIVATION
-// Sebelumnya pakai dummy `recipe.status`. Sekarang derive dari spi_score yang
-// sudah dihitung backend. Threshold di-tune supaya konsisten dengan freshness
-// status di backend (spi.py).
-// ─────────────────────────────────────────────────────────────────────────────
 type DerivedStatus = "expired_soon" | "approaching" | "fresh";
 
 const deriveStatus = (item: RecommendationItem): DerivedStatus => {
@@ -74,13 +68,11 @@ function matchesRange(value: number, range: RangeOption | null): boolean {
 function applyFilter(
   recipes: RecommendationItem[],
   filter: FilterState,
-  search: string
 ): RecommendationItem[] {
   let result = recipes.filter((r) => {
-    const matchesSearch = r.title.toLowerCase().includes(search.toLowerCase());
     const matchesSteps = matchesRange(r.total_steps, filter.stepsRange);
     const matchesIngredients = matchesRange(r.total_ingredients, filter.ingredientsRange);
-    return matchesSearch && matchesSteps && matchesIngredients;
+    return matchesSteps && matchesIngredients;
   });
 
   if (filter.sortBy === "fastest_steps") {
@@ -102,8 +94,9 @@ function isFilterActive(filter: FilterState): boolean {
   );
 }
 
-const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
+const RecipeRecommendationScreen: React.FC<Props> = ({ navigation, route }) => {
   const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { photoUri } = useAuth();
   const [search, setSearch] = useState("");
   const [filterVisible, setFilterVisible] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterState>(DEFAULT_FILTER);
@@ -113,6 +106,41 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ latencyMs: number; spiWeight: number } | null>(null);
+  const [isPopularMode, setIsPopularMode] = useState(false);
+
+  // Fetch resep populer acak sebagai fallback saat stok kosong
+  const fetchPopularFallback = useCallback(async () => {
+    try {
+      const res = await api.get("/recipes/popular", { params: { limit: 10 } });
+      const popularRecipes: RecommendationItem[] = (res.data || []).map(
+        (r: any, idx: number) => ({
+          index: r.id ?? idx,
+          title: r.title || "",
+          ingredients: r.ingredients || "",
+          ingredients_cleaned: r.ingredients_cleaned || "",
+          steps: r.steps || "",
+          loves: r.loves || 0,
+          url: r.url || null,
+          category: r.category_name || null,
+          total_ingredients: r.total_ingredients || 0,
+          total_steps: r.total_steps || 0,
+          cosine_score: 0,
+          spi_score: 0,
+          final_score: 0,
+          match_percentage: 0,
+          explanation: null,
+        })
+      );
+      setRecipes(popularRecipes);
+      setIsPopularMode(true);
+      setErrorMsg(null);
+    } catch (fallbackErr) {
+      console.warn("[RecipeRecommendation] popular fallback error:", fallbackErr);
+      // Kalau fallback juga gagal, baru tampilkan empty state
+      setRecipes([]);
+      setIsPopularMode(false);
+    }
+  }, []);
 
   const fetchRecommendations = useCallback(async () => {
     try {
@@ -122,13 +150,13 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
       });
       setRecipes(res.data.recommendations || []);
       setMeta({ latencyMs: res.data.latency_ms, spiWeight: res.data.spi_weight });
+      setIsPopularMode(false);
     } catch (err) {
       const msg = extractApiError(err);
       console.warn("[RecipeRecommendation] fetch error:", msg);
-      // 400 dari backend = inventaris kosong → tampilkan empty state, bukan error
       if (msg.toLowerCase().includes("inventaris kosong")) {
-        setRecipes([]);
-        setErrorMsg("Stok bahan kosong. Tambahkan bahan di tab Stok dulu.");
+        setMeta(null);
+        await fetchPopularFallback();
       } else {
         setErrorMsg(msg);
       }
@@ -136,14 +164,26 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [fetchPopularFallback]);
 
-  // Auto-refresh saat halaman dibuka (mis. setelah user nambah bahan baru)
+  const pendingRecipeRef = useRef(route.params?.pendingRecipe);
+  pendingRecipeRef.current = route.params?.pendingRecipe;
+
+  // Auto-refresh saat halaman dibuka + handle pendingRecipe dari Beranda
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       fetchRecommendations();
-    }, [fetchRecommendations])
+
+      const pending = pendingRecipeRef.current;
+      if (!pending) return;
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        navigation.push("RecipeDetail", { recipe: pending });
+        navigation.setParams({ pendingRecipe: undefined } as any);
+      });
+      return () => task.cancel();
+    }, [fetchRecommendations, navigation])
   );
 
   const onRefresh = () => {
@@ -165,24 +205,30 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BB0009" />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifButton} onPress={() => rootNavigation.navigate("Notification")}>
-              <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
-            </TouchableOpacity>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={20} color="#FFFFFF" />
-            </View>
-          </View>
-        </View>
+        <Header
+          onNotificationPress={() => rootNavigation.navigate("Notification")}
+          onAvatarPress={() => rootNavigation.navigate("Main", { screen: "Profil" } as any)}
+          photoUri={photoUri}
+        />
 
-        {/* Title */}
-        <Text style={styles.title}>Rekomendasi Menu</Text>
-        <Text style={styles.subtitle}>
-          Pilihan cerdas untuk kurangi sisa makanan hari ini.
+        {/* Title — opacity 0 saat first load supaya tidak flash judul yang salah */}
+        <Text style={[styles.title, loading && recipes.length === 0 && { opacity: 0 }]}>
+          {isPopularMode ? "Resep Populer" : "Rekomendasi Menu"}
         </Text>
+        <Text style={[styles.subtitle, loading && recipes.length === 0 && { opacity: 0 }]}>
+          {isPopularMode
+            ? "Tambahkan bahan di tab Stok untuk rekomendasi yang lebih personal."
+            : "Pilihan cerdas untuk kurangi sisa makanan hari ini."}
+        </Text>
+
+        {isPopularMode && !loading && recipes.length > 0 && (
+          <View style={styles.popularBanner}>
+            <Ionicons name="trending-up" size={16} color="#D97706" />
+            <Text style={styles.popularBannerText}>
+              Menampilkan resep terpopuler. Tambah bahan di Stok untuk rekomendasi AI.
+            </Text>
+          </View>
+        )}
 
         {/* Meta info dari AI engine */}
         {meta && !loading && recipes.length > 0 && (
@@ -249,7 +295,9 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
         ) : (
           filteredRecipes.map((recipe) => {
             const status = deriveStatus(recipe);
-            const config = STATUS_CONFIG[status];
+            const config = isPopularMode
+              ? { label: "POPULER", badgeColor: "#D97706", borderColor: "#F59E0B", bgColor: "#FFFBEB" }
+              : STATUS_CONFIG[status];
             return (
               <TouchableOpacity
                 key={recipe.index}
@@ -268,28 +316,33 @@ const RecipeRecommendationScreen: React.FC<Props> = ({ navigation }) => {
                 {/* Recipe Name (capitalized) */}
                 <Text style={styles.recipeName}>{capitalizeEachWord(recipe.title)}</Text>
 
-                {/* Match percentage + explanation */}
+                {/* Description — context-aware */}
                 <Text style={styles.recipeDescription} numberOfLines={2}>
-                  {recipe.explanation || `${recipe.match_percentage.toFixed(0)}% bahan Anda cocok dengan resep ini.`}
+                  {isPopularMode
+                    ? `${recipe.loves} orang menyukai resep ini.`
+                    : recipe.explanation || `${recipe.match_percentage.toFixed(0)}% bahan Anda cocok dengan resep ini.`
+                  }
                 </Text>
 
-                {/* Score breakdown (XAI) */}
-                <View style={styles.scoreRow}>
-                  <View style={styles.scorePill}>
-                    <Text style={styles.scorePillLabel}>COSINE</Text>
-                    <Text style={styles.scorePillValue}>{(recipe.cosine_score * 100).toFixed(0)}%</Text>
+                {/* Score breakdown — hanya tampil di mode AI, bukan popular */}
+                {!isPopularMode && (
+                  <View style={styles.scoreRow}>
+                    <View style={styles.scorePill}>
+                      <Text style={styles.scorePillLabel}>COSINE</Text>
+                      <Text style={styles.scorePillValue}>{(recipe.cosine_score * 100).toFixed(0)}%</Text>
+                    </View>
+                    <View style={styles.scorePill}>
+                      <Text style={styles.scorePillLabel}>SPI</Text>
+                      <Text style={styles.scorePillValue}>{(recipe.spi_score * 100).toFixed(0)}%</Text>
+                    </View>
+                    <View style={[styles.scorePill, styles.scorePillFinal]}>
+                      <Text style={[styles.scorePillLabel, { color: "#BB0009" }]}>FINAL</Text>
+                      <Text style={[styles.scorePillValue, { color: "#BB0009" }]}>
+                        {(recipe.final_score * 100).toFixed(0)}%
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.scorePill}>
-                    <Text style={styles.scorePillLabel}>SPI</Text>
-                    <Text style={styles.scorePillValue}>{(recipe.spi_score * 100).toFixed(0)}%</Text>
-                  </View>
-                  <View style={[styles.scorePill, styles.scorePillFinal]}>
-                    <Text style={[styles.scorePillLabel, { color: "#BB0009" }]}>FINAL</Text>
-                    <Text style={[styles.scorePillValue, { color: "#BB0009" }]}>
-                      {(recipe.final_score * 100).toFixed(0)}%
-                    </Text>
-                  </View>
-                </View>
+                )}
 
                 {/* Meta Row */}
                 <View style={styles.metaRow}>
@@ -337,32 +390,6 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === "ios" ? 60 : 40,
     paddingBottom: 20,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  logoSmall: {
-    width: 56,
-    height: 32,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  notifButton: {
-    padding: 4,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#36393B",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   title: {
     fontFamily: "Inter_700Bold",
     fontSize: 26,
@@ -392,6 +419,25 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#BB0009",
     letterSpacing: 0.3,
+  },
+  popularBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  popularBannerText: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: "#92400E",
+    lineHeight: 17,
   },
   searchRow: {
     flexDirection: "row",

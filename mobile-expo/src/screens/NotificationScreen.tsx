@@ -4,10 +4,9 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  Image,
   Platform,
   ActivityIndicator,
+  TouchableOpacity, // <--- Tambahkan ini
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,8 +16,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import Header from "../components/Header";
 
-const LOGO_IMAGE = require("../assets/images/logo.png");
 const API_URL = "https://nirsisa-production.up.railway.app";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Notification">;
@@ -124,16 +123,7 @@ const NotificationScreen: React.FC<Props> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BB0009" />}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={22} color="#2B2B2B" />
-          </TouchableOpacity>
-          <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <View style={styles.avatar}>
-            <Ionicons name="person" size={20} color="#FFFFFF" />
-          </View>
-        </View>
+        <Header variant="back" onBack={() => navigation.goBack()} />
 
         <Text style={styles.title}>Notifikasi</Text>
         <Text style={styles.subtitle}>Jaga kesegaran dapur Anda dan kurangi limbah.</Text>
@@ -209,32 +199,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: Platform.OS === "ios" ? 60 : 40,
     paddingBottom: 20,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 28,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#F0F0F0",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoSmall: {
-    width: 56,
-    height: 32,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#36393B",
-    alignItems: "center",
-    justifyContent: "center",
   },
   title: {
     fontFamily: "Inter_700Bold",

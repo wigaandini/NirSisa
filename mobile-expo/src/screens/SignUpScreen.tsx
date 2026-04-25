@@ -57,9 +57,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
     if (error) {
       Alert.alert("Pendaftaran Gagal", error.message);
     } else {
-      Alert.alert("Berhasil", "Akun berhasil dibuat! Silakan login.", [
-        { text: "OK", onPress: () => navigation.navigate("Login") },
-      ]);
+      Alert.alert("Berhasil", "Akun berhasil dibuat! Selamat datang di NirSisa.");
     }
   };
 
@@ -176,7 +174,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
             <Text style={styles.inputLabel}>KATA SANDI</Text>
             <View style={styles.inputWrapper}>
               <TextInput
-                style={[styles.input, styles.passwordInput]}
+                style={styles.input}
                 placeholder="••••••••"
                 placeholderTextColor="#BFD3D6"
                 value={password}
@@ -315,13 +313,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  passwordInput: {
-    paddingRight: 50,
-  },
   eyeButton: {
-    position: "absolute",
-    right: 14,
-    padding: 4,
+    paddingHorizontal: 14,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
   },
   primaryButton: {
     flexDirection: "row",

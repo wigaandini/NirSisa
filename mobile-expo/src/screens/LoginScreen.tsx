@@ -138,7 +138,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             <Text style={styles.inputLabel}>KATA SANDI</Text>
             <View style={styles.inputWrapper}>
               <TextInput
-                style={[styles.input, styles.passwordInput]}
+                style={styles.input}
                 placeholder="••••••••"
                 placeholderTextColor="#BFD3D6"
                 value={password}
@@ -285,13 +285,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  passwordInput: {
-    paddingRight: 50,
-  },
   eyeButton: {
-    position: "absolute",
-    right: 14,
-    padding: 4,
+    paddingHorizontal: 14,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
   },
   forgotContainer: {
     alignSelf: "flex-end",

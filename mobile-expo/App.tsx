@@ -1,11 +1,15 @@
 import React, { useState, useCallback } from "react";
 import { View, StyleSheet, ActivityIndicator, Text, TextInput } from "react-native";
 
-// Prevent Android system font-size settings from scaling all text/inputs
+// Prevent Android system font-size settings from scaling all text/inputs.
+// allowFontScaling alone is not enough on newer RN/Android — maxFontSizeMultiplier
+// caps the system fontScale at 1x regardless of device accessibility settings.
 (Text as any).defaultProps = (Text as any).defaultProps ?? {};
 (Text as any).defaultProps.allowFontScaling = false;
+(Text as any).defaultProps.maxFontSizeMultiplier = 1;
 (TextInput as any).defaultProps = (TextInput as any).defaultProps ?? {};
 (TextInput as any).defaultProps.allowFontScaling = false;
+(TextInput as any).defaultProps.maxFontSizeMultiplier = 1;
 import { NavigationContainer } from "@react-navigation/native";
 import {
   useFonts,

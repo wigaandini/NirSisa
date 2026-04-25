@@ -1,5 +1,5 @@
 // ============================================================================
-// Push Notification Service — Expo Push Notifications (Fix SDK 53 Expo Go)
+// Push Notification Service — Expo Push Notifications (Fixed for SDK 53)
 // ============================================================================
 
 import * as Device from "expo-device";
@@ -7,25 +7,24 @@ import Constants, { ExecutionEnvironment } from "expo-constants";
 import { Platform } from "react-native";
 import { api } from "./api";
 
-// Cek lingkungan runtime
+// Cek apakah aplikasi berjalan di dalam Expo Go (Store Client)
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-const isAndroid = Platform.OS === "android";
 
 /**
- * PENTING: Di SDK 53, mengimport expo-notifications langsung akan membuat 
- * aplikasi crash di Expo Go Android. Kita gunakan require() agar library 
- * hanya dimuat jika bukan di Expo Go Android.
+ * Helper untuk mendapatkan modul notifications secara dinamis.
+ * Ini mencegah error "Module removed from Expo Go" di SDK 53.
  */
-let Notifications: any = null;
-if (!(isExpoGo && isAndroid)) {
+const getNotificationsModule = () => {
+  if (isExpoGo && Platform.OS === "android") return null;
   try {
-    Notifications = require("expo-notifications");
+    return require("expo-notifications");
   } catch (e) {
-    console.error("Gagal memuat expo-notifications:", e);
+    return null;
   }
-}
+};
 
-// Konfigurasi handler (hanya jika library berhasil dimuat)
+// Konfigurasi handler (Hanya jika bukan Expo Go Android)
+const Notifications = getNotificationsModule();
 if (Notifications) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -42,75 +41,56 @@ if (Notifications) {
  * Inisialisasi notification channel (Android).
  */
 export async function initNotifications(): Promise<void> {
-  if (!Notifications || (isExpoGo && isAndroid)) {
-    console.log("[notifications] Berjalan di Expo Go Android. Init channel dilewati.");
-    return;
-  }
+  const Notif = getNotificationsModule();
+  if (!Notif || Platform.OS !== "android") return;
 
-  if (isAndroid) {
-    try {
-      await Notifications.setNotificationChannelAsync("expiry-alerts", {
-        name: "Peringatan Kedaluwarsa",
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#BB0009",
-        sound: "default",
-      });
-    } catch (err) {
-      console.log("[notifications] Gagal membuat channel:", err);
-    }
+  try {
+    await Notif.setNotificationChannelAsync("expiry-alerts", {
+      name: "Peringatan Kedaluwarsa",
+      importance: Notif.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#BB0009",
+      sound: "default",
+    });
+  } catch (err) {
+    console.log("[notifications] Gagal membuat channel:", err);
   }
 }
 
 /**
- * Minta izin push notification dan dapatkan Expo Push Token.
+ * Dapatkan Expo Push Token.
  */
 export async function getExpoPushToken(): Promise<string | null> {
-  // 1. Cek apakah ini perangkat fisik
-  if (!Device.isDevice) {
-    console.log("[notifications] Bukan physical device, skip push token.");
+  const Notif = getNotificationsModule();
+  
+  if (!Device.isDevice || !Notif) {
+    console.log("[notifications] Fitur push dilewati (Simulator/Expo Go Android)");
     return null;
   }
 
-  // 2. Cek ketersediaan library (Cegah error SDK 53)
-  if (!Notifications || (isExpoGo && isAndroid)) {
-    console.warn(
-      "[notifications] Remote notifications tidak didukung di Expo Go Android (SDK 53+). " +
-      "Gunakan Development Build untuk mengetes fitur ini."
-    );
+  const { status: existingStatus } = await Notif.getPermissionsAsync();
+  let finalStatus = existingStatus;
+
+  if (existingStatus !== "granted") {
+    const { status } = await Notif.requestPermissionsAsync();
+    finalStatus = status;
+  }
+
+  if (finalStatus !== "granted") return null;
+
+  const projectId = 
+    Constants.expoConfig?.extra?.eas?.projectId ?? 
+    Constants.easConfig?.projectId;
+
+  if (!projectId) {
+    console.warn("[notifications] Project ID tidak ditemukan di app.json");
     return null;
   }
 
   try {
-    // 3. Kelola Izin (Permissions)
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== "granted") {
-      console.log("[notifications] Izin notifikasi ditolak oleh pengguna.");
-      return null;
-    }
-
-    // 4. Dapatkan Project ID
-    const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ??
-      Constants.easConfig?.projectId;
-
-    if (!projectId) {
-      console.error("[notifications] Project ID tidak ditemukan di app.json.");
-      return null;
-    }
-
-    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    console.log("[notifications] Expo Push Token didapat:", tokenData.data);
+    const tokenData = await Notif.getExpoPushTokenAsync({ projectId });
     return tokenData.data;
   } catch (err) {
-    console.log("[notifications] Gagal mengambil Push Token:", (err as Error).message);
     return null;
   }
 }
@@ -127,10 +107,8 @@ export async function registerPushToken(): Promise<boolean> {
       expo_push_token: token,
       device_info: `${Device.brand ?? "Unknown"} ${Device.modelName ?? ""}`.trim(),
     });
-    console.log("[notifications] Token berhasil didaftarkan ke server.");
     return true;
   } catch (err) {
-    console.warn("[notifications] Gagal mengirim token ke server:", err);
     return false;
   }
 }
@@ -139,8 +117,6 @@ export async function registerPushToken(): Promise<boolean> {
  * Hapus push token dari backend.
  */
 export async function unregisterPushToken(): Promise<void> {
-  if (!Notifications || (isExpoGo && isAndroid)) return;
-
   const token = await getExpoPushToken();
   if (!token) return;
 
@@ -148,28 +124,23 @@ export async function unregisterPushToken(): Promise<void> {
     await api.delete("/notifications/token", {
       params: { expo_push_token: token },
     });
-    console.log("[notifications] Token dihapus dari backend.");
-  } catch (err) {
-    console.warn("[notifications] Gagal menghapus token dari server:", err);
-  }
+  } catch (err) {}
 }
 
-// Listener standar
-export function addNotificationReceivedListener(
-  callback: (notification: any) => void
-): any {
-  if (!Notifications) return { remove: () => {} };
-  return Notifications.addNotificationReceivedListener(callback);
+/**
+ * Listeners
+ */
+export function addNotificationReceivedListener(callback: (n: any) => void) {
+  const Notif = getNotificationsModule();
+  return Notif ? Notif.addNotificationReceivedListener(callback) : { remove: () => {} };
 }
 
-export function addNotificationResponseListener(
-  callback: (response: any) => void
-): any {
-  if (!Notifications) return { remove: () => {} };
-  return Notifications.addNotificationResponseReceivedListener(callback);
+export function addNotificationResponseListener(callback: (r: any) => void) {
+  const Notif = getNotificationsModule();
+  return Notif ? Notif.addNotificationResponseReceivedListener(callback) : { remove: () => {} };
 }
 
 export async function setBadgeCount(count: number): Promise<void> {
-  if (!Notifications || (isExpoGo && isAndroid)) return;
-  await Notifications.setBadgeCountAsync(count);
+  const Notif = getNotificationsModule();
+  if (Notif) await Notif.setBadgeCountAsync(count);
 }

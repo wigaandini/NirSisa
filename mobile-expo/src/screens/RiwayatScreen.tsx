@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Platform,
   ActivityIndicator,
   RefreshControl,
@@ -17,8 +16,7 @@ import { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../context/AuthContext";
 import { capitalizeEachWord } from "../utils/formatters";
-
-const LOGO_IMAGE = require("../assets/images/logo.png");
+import Header from "../components/Header";
 
 interface HistoryItem {
   id: string;
@@ -106,23 +104,11 @@ const RiwayatScreen: React.FC = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BB0009" />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Image source={LOGO_IMAGE} style={styles.logoSmall} resizeMode="contain" />
-          <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifButton} onPress={() => navigation.navigate("Notification")}>
-              <Ionicons name="notifications-outline" size={22} color="#2B2B2B" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.avatar}
-              onPress={() => navigation.navigate("Main", { screen: "Profil" } as any)}
-            >
-              {photoUri
-                ? <Image source={{ uri: photoUri }} style={{ width: 40, height: 40, borderRadius: 20 }} />
-                : <Ionicons name="person" size={20} color="#FFFFFF" />}
-            </TouchableOpacity>
-          </View>
-        </View>
+        <Header
+          onNotificationPress={() => navigation.navigate("Notification")}
+          onAvatarPress={() => navigation.navigate("Main", { screen: "Profil" } as any)}
+          photoUri={photoUri}
+        />
 
         {/* Stat Cards Dinamis */}
         <View style={styles.statRow}>
@@ -198,32 +184,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: Platform.OS === "ios" ? 60 : 40,
     paddingBottom: 20,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 28,
-  },
-  logoSmall: {
-    width: 56,
-    height: 32,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  notifButton: {
-    padding: 4,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#36393B",
-    alignItems: "center",
-    justifyContent: "center",
   },
   statRow: {
     flexDirection: "row",
