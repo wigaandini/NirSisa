@@ -17,7 +17,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/api";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
+const CELL_SIZE = Math.floor((SCREEN_WIDTH - 48) / 7);
+
+const MONTH_NAMES = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+const DAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
 
 const KATEGORI_OPTIONS = [
@@ -70,6 +77,9 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [pickerMonth, setPickerMonth] = useState(new Date().getMonth());
+  const [pickerYear, setPickerYear] = useState(new Date().getFullYear());
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dateInputRef = useRef<TextInput>(null);
 
@@ -188,6 +198,101 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
     setTanggal(formatted);
   };
 
+  const openDatePicker = () => {
+    Keyboard.dismiss();
+    if (tanggal && tanggal.length === 10) {
+      const [dd, mm, yyyy] = tanggal.split("/");
+      setPickerMonth(parseInt(mm) - 1);
+      setPickerYear(parseInt(yyyy));
+    } else {
+      const now = new Date();
+      setPickerMonth(now.getMonth());
+      setPickerYear(now.getFullYear());
+    }
+    setShowDatePicker((prev) => !prev);
+  };
+
+  const selectDay = (day: number) => {
+    const dd = String(day).padStart(2, "0");
+    const mm = String(pickerMonth + 1).padStart(2, "0");
+    setTanggal(`${dd}/${mm}/${pickerYear}`);
+    setShowDatePicker(false);
+  };
+
+  const prevMonth = () => {
+    if (pickerMonth === 0) { setPickerMonth(11); setPickerYear((y) => y - 1); }
+    else setPickerMonth((m) => m - 1);
+  };
+
+  const nextMonth = () => {
+    if (pickerMonth === 11) { setPickerMonth(0); setPickerYear((y) => y + 1); }
+    else setPickerMonth((m) => m + 1);
+  };
+
+  const renderCalendar = () => {
+    const daysInMonth = new Date(pickerYear, pickerMonth + 1, 0).getDate();
+    const firstDay = new Date(pickerYear, pickerMonth, 1).getDay();
+    const cells: (number | null)[] = [];
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+    let selectedDay: number | null = null;
+    if (tanggal && tanggal.length === 10) {
+      const [dd, mm, yyyy] = tanggal.split("/");
+      if (parseInt(mm) - 1 === pickerMonth && parseInt(yyyy) === pickerYear) {
+        selectedDay = parseInt(dd);
+      }
+    }
+
+    const today = new Date();
+
+    return (
+      <View style={styles.calendarContainer}>
+        <View style={styles.calHeader}>
+          <TouchableOpacity onPress={prevMonth} style={styles.calNavBtn}>
+            <Ionicons name="chevron-back" size={20} color="#2B2B2B" />
+          </TouchableOpacity>
+          <Text style={styles.calMonthYear}>{MONTH_NAMES[pickerMonth]} {pickerYear}</Text>
+          <TouchableOpacity onPress={nextMonth} style={styles.calNavBtn}>
+            <Ionicons name="chevron-forward" size={20} color="#2B2B2B" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.calDayRow}>
+          {DAY_LABELS.map((d) => (
+            <Text key={d} style={styles.calDayLabel}>{d}</Text>
+          ))}
+        </View>
+
+        <View style={styles.calGrid}>
+          {cells.map((day, idx) => {
+            if (!day) return <View key={`e-${idx}`} style={styles.calCell} />;
+            const isSelected = day === selectedDay;
+            const isToday =
+              day === today.getDate() &&
+              pickerMonth === today.getMonth() &&
+              pickerYear === today.getFullYear();
+            return (
+              <TouchableOpacity
+                key={day}
+                style={[styles.calCell, isSelected && styles.calCellSelected, isToday && !isSelected && styles.calCellToday]}
+                onPress={() => selectDay(day)}
+              >
+                <Text style={[styles.calDayNum, isSelected && styles.calDayNumSelected, isToday && !isSelected && styles.calDayNumToday]}>
+                  {day}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity onPress={() => { setTanggal(""); setShowDatePicker(false); }} style={styles.calClearBtn}>
+          <Text style={styles.calClearText}>Hapus Tanggal</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
@@ -277,12 +382,13 @@ const TambahBahanModal: React.FC<TambahBahanModalProps> = ({
                 maxLength={10}
               />
               <TouchableOpacity
-                onPress={() => dateInputRef.current?.focus()}
+                onPress={openDatePicker}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Ionicons name="calendar-outline" size={20} color="#656C6E" />
+                <Ionicons name="calendar-outline" size={20} color={showDatePicker ? "#BB0009" : "#656C6E"} />
               </TouchableOpacity>
             </View>
+            {showDatePicker && renderCalendar()}
 
             <TouchableOpacity style={[styles.saveButton, !nama && styles.saveButtonDisabled]} onPress={handleSave} disabled={!nama}>
               <Text style={styles.saveButtonText}>{initialData ? "Simpan Perubahan" : "Simpan ke Inventaris"}</Text>
@@ -487,6 +593,87 @@ const styles = StyleSheet.create({
   switchLabel: { fontFamily: 'Inter_700Bold', fontSize: 14, color: '#2B2B2B' },
   switchSub: { fontSize: 11, color: '#656C6E' },
   infoText: { fontSize: 11, color: '#949FA2', fontStyle: 'italic', marginTop: 4 },
+  // ── Calendar ──
+  calendarContainer: {
+    marginTop: 10,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
+    padding: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  calHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  calNavBtn: {
+    padding: 6,
+  },
+  calMonthYear: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    color: "#2B2B2B",
+  },
+  calDayRow: {
+    flexDirection: "row",
+    marginBottom: 4,
+  },
+  calDayLabel: {
+    width: CELL_SIZE,
+    textAlign: "center",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: "#949FA2",
+    letterSpacing: 0.3,
+  },
+  calGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  calCell: {
+    width: CELL_SIZE,
+    height: CELL_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 9999,
+  },
+  calCellSelected: {
+    backgroundColor: "#BB0009",
+  },
+  calCellToday: {
+    borderWidth: 1,
+    borderColor: "#BB0009",
+  },
+  calDayNum: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: "#2B2B2B",
+  },
+  calDayNumSelected: {
+    fontFamily: "Inter_700Bold",
+    color: "#FFFFFF",
+  },
+  calDayNumToday: {
+    fontFamily: "Inter_700Bold",
+    color: "#BB0009",
+  },
+  calClearBtn: {
+    alignItems: "center",
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  calClearText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: "#949FA2",
+  },
 
 
   
