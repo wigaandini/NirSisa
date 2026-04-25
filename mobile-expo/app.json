@@ -41,6 +41,12 @@
           "color": "#BB0009"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d77c90de-bcb2-4643-a655-b6051aa44c92"
+      }
+    },
+    "owner": "yovankaasm"
   }
 }
