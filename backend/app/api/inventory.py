@@ -37,6 +37,7 @@ async def get_unit_suggestion(item_name: str, category_id: int | None = None):
         "category_id": result["category_id"],
     }
 
+
 # GET  /inventory  — Daftar seluruh stok user
 @router.get("", response_model=list[InventoryItemResponse])
 async def list_inventory(user_id: str = Depends(get_current_user_id)):
@@ -75,12 +76,11 @@ async def add_item(
     user_id: str = Depends(get_current_user_id),
 ):
     """
-    Tambah bahan ke inventaris. 
+    Tambah bahan ke inventaris.
     Mendukung input category_name dari HP untuk dikonversi ke category_id di backend.
     """
     sb = get_supabase()
 
-    # PERBAIKAN: Tambahkan parameter category_name agar dikonversi ke ID di service
     row = prepare_insert_row(
         user_id=user_id,
         item_name=item.item_name,
@@ -88,7 +88,7 @@ async def add_item(
         unit=item.unit,
         is_natural=item.is_natural,
         expiry_date=item.expiry_date,
-        category_name=item.category_name # <--- TERUSKAN DATA DARI FRONTEND
+        category_name=item.category_name, 
     )
 
     result = sb.table("inventory_stock").insert(row).execute()
@@ -107,26 +107,31 @@ async def update_item(
     user_id: str = Depends(get_current_user_id),
 ):
     sb = get_supabase()
-    
+
     # 1. Ubah model ke dictionary, exclude_none=True agar field yang tidak diisi tidak ikut terupdate
-    updates = item.model_dump(exclude_none=True, mode='json')
+    updates = item.model_dump(exclude_none=True, mode="json")
 
     # 2. Proses normalisasi nama jika ada perubahan nama
     if "item_name" in updates:
         updates["item_name_normalized"] = normalize_ingredient_name(updates["item_name"])
 
-    # 3. FIX: Tangani category_name agar tidak menyebabkan error PGRST204
+    # 3. Tangani category_name agar tidak menyebabkan error PGRST204
     if "category_name" in updates:
-        cat_name = updates.pop("category_name") # Hapus category_name dari dictionary updates
-        
+        cat_name = updates.pop("category_name")  # Hapus category_name dari dictionary updates
+
         # Cari category_id berdasarkan namanya di tabel categories
-        cat_res = sb.table("ingredient_categories").select("id").ilike("name", cat_name).execute()
-        
+        cat_res = (
+            sb.table("ingredient_categories")
+            .select("id")
+            .ilike("name", cat_name)
+            .execute()
+        )
+
         if cat_res.data:
             updates["category_id"] = cat_res.data[0]["id"]
         else:
             # Jika tidak ketemu, kita bisa set null atau biarkan kolom category_id yang lama
-            # updates["category_id"] = None 
+            # updates["category_id"] = None
             pass
 
     if not updates:
@@ -147,7 +152,13 @@ async def update_item(
 
         # Gunakan fungsi helper Anda untuk mengembalikan data lengkap
         return enrich_inventory_item(result.data[0])
-        
+
+    except HTTPException:
+        # PENTING:
+        # HTTPException dari validasi bisnis, seperti 404 item tidak ditemukan,
+        # harus diteruskan apa adanya. Jangan diubah menjadi 500.
+        raise
+
     except Exception as e:
         print(f"Error Database: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Gagal update ke database: {str(e)}")

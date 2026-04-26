@@ -130,15 +130,6 @@ def reconcile_inventory(
     Kurangi stok bahan setelah user konfirmasi selesai masak,
     dan catat ke consumption_history (parent) + consumption_history_items (children).
 
-    PERBAIKAN BESAR DARI VERSI LAMA:
-    - Versi lama mencoba insert ke tabel `consumption_history_log` yang TIDAK ADA
-      di schema. Sekarang pakai tabel yang sebenarnya: consumption_history +
-      consumption_history_items. Akibatnya RiwayatScreen sekarang akan terisi
-      data.
-    - recipe_id sekarang OPTIONAL. Recommender mengembalikan `index` (row pickle),
-      bukan DB primary key — jadi kita tidak bisa selalu set recipe_id.
-      Lebih aman None daripada FK error.
-
     Args:
         user_id: ID pengguna.
         recipe_id: ID resep di DB (optional). None jika tidak diketahui.
